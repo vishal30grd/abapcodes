@@ -1,0 +1,1175 @@
+
+INCLUDE zya_mmr_incoming_ship_csv_s01.
+INCLUDE zya_mmr_incoming_ship_csv_t01.
+INCLUDE zya_mmr_incoming_ship_csv_f01.
+
+START-OF-SELECTION.
+
+  PERFORM get_data.
+
+  IF it_final IS NOT INITIAL.
+    IF r1 = 'X'.
+      PERFORM display_alv.
+    ELSEIF r2 = 'X'.
+      PERFORM upload_al11.      "uploading FILE ON al11
+    ENDIF.
+  ELSE.
+    MESSAGE 'Data Not Found' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_INCOMING_SHIP_CSV_S01
+*&---------------------------------------------------------------------*
+
+TABLES: ekpo, ekkn, likp, lips, mvke, ekko.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+  SELECT-OPTIONS: s_ebeln FOR ekpo-ebeln,
+                  s_cont  FOR likp-zzcontainer_no,
+                  s_vbeln FOR lips-vbeln,
+                  s_vbelv FOR ekkn-vbeln,
+                  s_werks FOR ekpo-werks,
+                  s_bol   FOR likp-bolnr,
+                  s_matnr FOR lips-matnr,
+                  s_brand FOR mvke-mvgr1,
+                  s_lifnr FOR ekko-lifnr,
+                  s_status FOR likp-status.
+
+
+SELECTION-SCREEN: END OF BLOCK b1.
+
+SELECTION-SCREEN:BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+
+  PARAMETERS: r1 RADIOBUTTON GROUP rad1,
+              r2 RADIOBUTTON GROUP rad1.
+
+SELECTION-SCREEN:END OF BLOCK b2.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_INCOMING_SHIP_CSV_T01
+*&---------------------------------------------------------------------*
+
+
+TYPES: BEGIN OF ty_final,
+         ort1                      TYPE kna1-ort01,                       "Ship-to City
+         regio                     TYPE likp-zship_state,                 "Ship-to State
+         zzcontainer_no            TYPE likp-zzcontainer_no,              "Container
+         ebeln                     TYPE ekpo-ebeln,                       "Purchase Order Number
+         ebelp                     TYPE ekpo-ebelp,                       "Item No
+         sales_order_no            TYPE ekkn-vbeln,                       "Sales Order No.
+         ibd                       TYPE lips-vbeln,                       "Inbound Delivery No.
+         posnr                     TYPE lips-posnr,                       "Inbound Delivery Item'
+         lfimg                     TYPE lips-lfimg,                       "Inbound Delivery Quantity '
+         mbol                      TYPE likp-bolnr,                       "MBOL
+         matnr                     TYPE ekpo-matnr,                       "Material Number
+         l_matnr                   TYPE ausp-atwrt,
+         parent                    TYPE mara-ferth,                       "Parent
+         ferth                     TYPE vbap-kdmat,                       "Cross-Reference No.
+         groes                     TYPE mara-groes,                       "Size
+         maktx                     TYPE makt-maktx,                       "Material Description
+         brgew                     TYPE mara-brgew,                       "Item Weight (kgs)
+         bstnk                     TYPE vbak-bstnk,                       "Customer P.O.
+*         vbeln                     TYPE ekkn-vbeln,                       "Customer S.O.
+         zetafin_date              TYPE likp-zetafin_date,                "Ex Factory Date
+         zsail_date                TYPE likp-zsail_date,                  "Sailing Date
+         zoeta_dis_port            TYPE likp-zoeta_dis_port,              "Original ETA Discharge
+         org_eta_f_date            TYPE likp-zetafin_date,                "Original ETA Final Dest Date
+         eta_date                  TYPE likp-zetafin_date,                "ETA Date
+         zetadisc_port             TYPE likp-zetadisc_port,               "ETA Discharge Port
+         inland_eta(10)            TYPE c,                                "Inland ETA
+         zarr_dat                  TYPE likp-zarr_dat,                    "Date Arrived
+         date_arrived_at_whse      TYPE likp-zarr_dat,                    "Date Arrived At Whse
+         zpick_up_dat              TYPE likp-zpick_up_dat,                "Expected Unload Date
+         zport_dis                 TYPE likp-zport_dis,                   "Port of Discharge
+         zport_load                TYPE likp-zport_load,                  "Port of Loading
+         lifnr                     TYPE ekko-lifnr,                       "Vendor Number
+         zfinal_dest               TYPE likp-zfinal_dest,                 "FDN
+         zdeliv_mode               TYPE likp-zdeliv_mode,                 "Delivery Mode
+         zcont_size                TYPE likp-zcont_size,                  "Container Size
+         zcust_ent_no              TYPE likp-zcust_ent_no,                "Entry No.
+         sell_to_customer_name(40) TYPE c,                                "Sell-to Customer Name
+         werks                     TYPE ekpo-werks,                       "Plant
+         lgort                     TYPE ekpo-lgort,                       "Storage Location Code
+         zshipping                 TYPE likp-zshipping,                   "Shipping Line Details
+         verur                     TYPE likp-verur,                       "External Document No.
+         forwarder_name            TYPE lfa1-name1,                       "Forwarder Name
+         netpr                     TYPE ekpo-netpr,                       "Net Price
+         zzpromocode               TYPE vbap-zzpromocode,                 "Promotion Code
+         kvgr3                     TYPE ekko-zzoeaf,                      "Branch Code
+         salesperson_code          TYPE vbpa-kunnr,                       "Salesperson Code
+         salesperson_code_name     TYPE kna1-name1,                       "Salesperson Name
+         customer_bill_to_no       TYPE vbpa-kunnr,                       "Customer Bill-to Number
+         kdgrp                     TYPE t151t-ktext,                      "Customer Group
+         name1                     TYPE kna1-name1,                       "Bill- to Customer Name
+         brand                     TYPE tvm1t-mvgr1,                      "Brand
+         mvgr1                     TYPE tvm1t-bezei,                      "Brand Desc
+         mvgr2                     TYPE tvm2t-bezei,                      "Category Code
+         mvgr3                     TYPE tvm3t-bezei,                      "Sub-Cat Code
+         sales_rep_code(10)        TYPE c,                                "Sales Rep Code
+         zterm                     TYPE knvv-zterm,                       "Payment Term Code
+         invoice_disc_code(10)     TYPE c,                                "Invoice Disc. Code
+         ata_port_of_import        TYPE likp-zport_dis,                   "ATA Port Of Import
+         zefcode                   TYPE likp-zefcode,                     "EF code
+         zbl_date                  TYPE likp-zbl_date,                    "BOL Date & Time
+         status                    TYPE likp-status,                      "Status
+         month                     TYPE char2,                            "Month
+         week                      TYPE char2,                            "Week
+         week2                     TYPE scal-week,                        "Week
+         fob_nonfob                TYPE char10,                           "FOB/NONfob
+
+
+       END OF ty_final.
+
+DATA: it_final    TYPE TABLE OF ty_final,
+      wa_final    TYPE ty_final,
+      it_fieldcat TYPE slis_t_fieldcat_alv,
+      wa_fieldcat TYPE slis_fieldcat_alv,
+      wa_layout   TYPE slis_layout_alv.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_INCOMING_SHIP_CSV_F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form GET_DATA
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data .
+
+  DATA: it_allocvalueschar TYPE bapi1003_alloc_values_char OCCURS 0 WITH HEADER LINE,
+        it_allocvaluescurr TYPE bapi1003_alloc_values_curr OCCURS 0 WITH HEADER LINE,
+        it_allocvaluesnum  TYPE bapi1003_alloc_values_num  OCCURS 0 WITH HEADER LINE,
+        it_return          TYPE  bapiret2 OCCURS 0 WITH HEADER LINE,
+        lv_customer        TYPE bapi1003_key-object,
+
+        lv_atinn           TYPE ausp-atinn,
+        lv_loekz           TYPE ekpo-loekz,
+        lv_date2           TYPE scal-date.
+
+
+  SELECT    lips~vgbel,
+            lips~vgpos,
+            lips~vbeln,
+            lips~posnr,
+            lips~vbelv,
+            lips~posnv,
+            lips~lfimg,
+            likp~zzcontainer_no,
+            likp~zshipping,
+            likp~zsail_date,
+            likp~bolnr,
+            likp~lifnr,
+            likp~status
+       FROM lips
+       INNER JOIN likp
+       ON  lips~vbeln = likp~vbeln
+       WHERE lips~vgbel IN @s_ebeln
+       AND lips~werks IN @s_werks
+       AND lips~vbelv IN @s_vbelv
+       AND lips~vbeln IN @s_vbeln
+       AND lips~matnr IN @s_matnr
+       AND likp~bolnr IN @s_bol
+       AND likp~lifnr IN @s_lifnr
+       AND likp~status IN @s_status
+       AND likp~zzcontainer_no IN @s_cont
+*       AND lips~kzbew = 'B'
+       AND lips~pstyv = 'ELN'          "inbound delivery
+
+     GROUP BY
+            lips~vgbel,
+            lips~vgpos,
+            lips~vbeln,
+            lips~posnr,
+            lips~vbelv,
+            lips~posnv,
+            lips~lfimg,
+            likp~zzcontainer_no,
+            likp~zshipping,
+            likp~zsail_date,
+            likp~bolnr,
+            likp~lifnr,
+            likp~status
+     ORDER BY
+            lips~vgbel,
+            lips~vgpos,
+            lips~vbeln,
+            lips~posnr,
+            lips~vbelv,
+            lips~posnv,
+            lips~lfimg,
+            likp~zzcontainer_no,
+            likp~zshipping,
+            likp~zsail_date,
+            likp~bolnr,
+            likp~lifnr,
+            likp~status
+
+     INTO TABLE @DATA(it_lips_likp).
+
+
+  IF it_lips_likp IS NOT INITIAL.
+
+    SELECT ebeln, ebelp, matnr, werks, lgort, loekz, netpr
+      FROM ekpo
+      INTO TABLE @DATA(it_ekpo)
+      FOR ALL ENTRIES IN @it_lips_likp
+      WHERE ebeln = @it_lips_likp-vgbel.
+
+    SELECT kunnr, vbeln, parvw, posnr
+      FROM vbpa
+      INTO TABLE @DATA(it_vbpa)
+      FOR ALL ENTRIES IN @it_lips_likp
+      WHERE vbeln = @it_lips_likp-vbelv.
+*      AND parvw   = @lv_parvw2.
+
+    IF it_vbpa IS NOT INITIAL.
+      SELECT kunnr, ort01, regio,name1
+        FROM kna1
+        INTO TABLE @DATA(it_kna1)
+        FOR ALL ENTRIES IN @it_vbpa
+        WHERE kunnr = @it_vbpa-kunnr.
+
+      SELECT kunnr, zterm
+        FROM knvv
+        INTO TABLE @DATA(it_knvv)
+        FOR ALL ENTRIES IN @it_vbpa
+        WHERE kunnr = @it_vbpa-kunnr
+        AND vkorg = '3000'.
+
+*      SELECT kunnr, kdgrp, vkorg
+*       FROM knvv
+*       INTO TABLE @DATA(it_knvv1)
+*       FOR ALL ENTRIES IN @it_vbpa
+*       WHERE kunnr = @it_vbpa-kunnr
+*       AND vkorg = '3000'
+*       AND kdgrp NE ''.
+*
+*
+*      IF it_knvv1 IS NOT INITIAL.
+*        SELECT kdgrp, ktext
+*          FROM t151t
+*          INTO TABLE @DATA(it_t151t)
+*          FOR ALL ENTRIES IN @it_knvv1
+*          WHERE kdgrp = @it_knvv1-kdgrp
+*          AND spras   = 'E'
+*          AND kdgrp NE ' '.
+*      ENDIF.
+    ENDIF.
+
+    SELECT vbeln, zzpromocode, posnr, kdmat
+      FROM vbap
+      INTO TABLE @DATA(it_vbap)
+      FOR ALL ENTRIES IN @it_lips_likp
+      WHERE vbeln = @it_lips_likp-vbelv.
+
+    IF it_ekpo IS NOT INITIAL.
+      SELECT matnr, ferth, groes, brgew
+        FROM mara
+        INTO TABLE @DATA(it_mara)
+        FOR ALL ENTRIES IN @it_ekpo
+        WHERE matnr = @it_ekpo-matnr.
+
+      SELECT matnr, maktx, spras
+        FROM makt
+        INTO TABLE @DATA(it_makt)
+        FOR ALL ENTRIES IN @it_ekpo
+        WHERE matnr = @it_ekpo-matnr
+        AND spras IN ( 'Z' , 'E' ).
+
+      SELECT ebeln,  lifnr, zzoeaf
+        FROM ekko
+        INTO TABLE @DATA(it_ekko)
+        FOR ALL ENTRIES IN @it_ekpo
+        WHERE ebeln = @it_ekpo-ebeln.
+
+      SELECT matnr, mvgr1, mvgr2, mvgr3
+        FROM mvke
+        INTO TABLE @DATA(it_mvke)
+        FOR ALL ENTRIES IN @it_ekpo
+        WHERE matnr = @it_ekpo-matnr
+        AND vkorg = '3000'
+        AND vtweg = '20'.
+
+      IF it_mvke IS NOT INITIAL.
+
+        SELECT mvgr1, bezei
+          FROM tvm1t
+          INTO TABLE @DATA(it_tvm1t)
+          FOR ALL ENTRIES IN @it_mvke
+          WHERE mvgr1 = @it_mvke-mvgr1
+          AND spras   = 'E'
+          AND bezei NE ' '.
+
+        SELECT mvgr2, bezei
+         FROM tvm2t
+         INTO TABLE @DATA(it_tvm2t)
+         FOR ALL ENTRIES IN @it_mvke
+         WHERE mvgr2 = @it_mvke-mvgr2
+         AND spras   = 'E'
+         AND bezei NE ' '.
+
+        SELECT mvgr3, bezei
+         FROM tvm3t
+         INTO TABLE @DATA(it_tvm3t)
+         FOR ALL ENTRIES IN @it_mvke
+         WHERE mvgr3 = @it_mvke-mvgr3
+         AND spras   = 'E'
+         AND bezei NE ' '.
+
+      ENDIF.
+
+    ENDIF. "ekpo not initial check
+
+    SELECT  vbeln, bstnk, kvgr3, kunnr
+        FROM vbak
+        INTO TABLE @DATA(it_vbak)
+        FOR ALL ENTRIES IN @it_lips_likp
+        WHERE vbeln = @it_lips_likp-vbelv.
+*    ENDIF.
+
+
+*    IF it_vbak IS NOT INITIAL.
+*      SELECT kvgr3, bezei
+*        FROM tvv3t
+*        INTO TABLE @DATA(it_tvv3t)
+*        FOR ALL ENTRIES IN @it_vbak
+*        WHERE kvgr3 = @it_vbak-kvgr3
+*        AND spras = 'E'
+*        AND kvgr3 NE ' '.
+*    ENDIF.
+
+    SELECT vbeln, zzcontainer_no, zetafin_date, zsail_date, zoeta_dis_port, zetadisc_port, zarr_dat, zpick_up_dat, zport_dis,
+       zport_load, zfinal_dest, zdeliv_mode, zcont_size, zcust_ent_no, zshipping, verur, zefcode, zbl_date, status, bolnr, zexfact_date,
+       zship_city, zship_state
+      FROM likp
+      INTO TABLE @DATA(it_likp)
+      FOR ALL ENTRIES IN @it_lips_likp
+      WHERE vbeln = @it_lips_likp-vbeln.
+
+    SELECT ebeln, bukrs
+       FROM ekko                                  "ADDED ON 20.12.2023 FOR 3000 CHECK BY ASHISH
+       INTO TABLE @DATA(it_ekko2)
+       FOR ALL ENTRIES IN @it_lips_likp
+       WHERE ebeln = @it_lips_likp-vgbel
+       AND bukrs = '3000'.
+  ENDIF. " lips_likp not initial check
+
+  DATA: lv_atinn1 TYPE ausp-atinn,
+        lv_matnr1 TYPE cuobn.
+
+  CALL FUNCTION 'CONVERSION_EXIT_ATINN_INPUT'
+    EXPORTING
+      input  = 'ZYOH_ITEMCRRE'
+    IMPORTING
+      output = lv_atinn1.
+
+
+  LOOP AT it_lips_likp INTO DATA(lwa_lips_likp).
+
+    READ TABLE it_ekko2 INTO DATA(wa_ekko2) WITH KEY ebeln = lwa_lips_likp-vgbel.
+    IF sy-subrc = 0.
+      wa_final-zzcontainer_no = lwa_lips_likp-zzcontainer_no.
+      wa_final-ibd            = lwa_lips_likp-vbeln.
+      wa_final-posnr          = lwa_lips_likp-posnr.
+      wa_final-lfimg          = lwa_lips_likp-lfimg.
+      wa_final-sales_order_no = lwa_lips_likp-vbelv.
+
+
+*  *------------------------------------------------------VBPA Read Table for multiple columns as per the condition-------------------------
+      IF lwa_lips_likp-vbelv IS NOT INITIAL. "++BY . ON 16.04.2024
+        READ TABLE it_vbpa INTO DATA(wa_vbpa) WITH KEY vbeln = lwa_lips_likp-vbelv
+                                                       parvw = 'WE'.
+*                                                   posnr = lwa_ekpo-vgpos.
+        IF sy-subrc = 0.
+          READ TABLE it_kna1 INTO DATA(wa_kna1) WITH KEY kunnr = wa_vbpa-kunnr.
+          IF sy-subrc = 0.
+*            wa_final-ort1                        = wa_kna1-ort01.
+*            wa_final-regio                       = wa_kna1-regio.
+            wa_final-sell_to_customer_name       = wa_kna1-name1.
+          ENDIF.
+
+*          READ TABLE it_knvv1 INTO DATA(wa_knvv1) WITH KEY kunnr = wa_vbpa-kunnr.
+*          IF sy-subrc = 0.
+*            READ TABLE it_t151t INTO DATA(wa_t151t) WITH KEY  kdgrp = wa_knvv1-kdgrp.
+*            IF sy-subrc = 0.
+*              wa_final-kdgrp   = wa_t151t-ktext.
+*            ENDIF.
+*          ENDIF.
+
+        ENDIF.
+
+        READ TABLE it_vbpa INTO DATA(wa_vbpa1) WITH KEY vbeln = lwa_lips_likp-vbelv
+*                                                    posnr = lwa_ekpo-EBELP
+                                                        parvw = 'ZS'.
+        IF sy-subrc = 0.
+          wa_final-salesperson_code    = wa_vbpa1-kunnr.
+
+          READ TABLE it_kna1 INTO DATA(wa_kna_zs) WITH KEY kunnr = wa_vbpa1-kunnr.
+          IF sy-subrc = 0.
+            wa_final-salesperson_code_name     = wa_kna_zs-name1.
+          ENDIF.
+
+        ENDIF.
+
+*        READ TABLE it_vbpa INTO DATA(wa_vbpa2) WITH KEY vbeln = lwa_lips_likp-vbelv
+**                                                    posnr = lwa_ekpo-EBELP
+*                                                         parvw = 'ZY'.
+*        IF sy-subrc = 0.
+*          wa_final-salesperson2_code    = wa_vbpa2-kunnr.
+*        ENDIF.
+
+        READ TABLE it_vbpa INTO DATA(wa_vbpa3) WITH KEY vbeln = lwa_lips_likp-vbelv
+*                                                    posnr = lwa_ekpo-EBELP
+                                                        parvw = 'AG'.
+        IF sy-subrc = 0.
+          wa_final-customer_bill_to_no    = wa_vbpa3-kunnr.
+
+          READ TABLE it_kna1 INTO DATA(wa_kna2) WITH KEY kunnr = wa_vbpa3-kunnr.
+          IF sy-subrc = 0.
+            wa_final-name1                       = wa_kna2-name1.
+          ENDIF.
+
+          READ TABLE it_knvv INTO DATA(wa_knvv) WITH KEY kunnr = wa_vbpa-kunnr.
+          IF sy-subrc = 0.
+            wa_final-zterm      = wa_knvv-zterm.
+          ENDIF.
+
+        ENDIF.
+*---------------------------------------------------------------------------------------------------------------------------
+
+        READ TABLE it_vbap INTO DATA(wa_vbap) WITH KEY vbeln = lwa_lips_likp-vbelv
+                                                       posnr = lwa_lips_likp-posnv.
+        IF sy-subrc = 0.
+          wa_final-zzpromocode     = wa_vbap-zzpromocode.
+          wa_final-ferth           = wa_vbap-kdmat.
+        ENDIF.
+
+        READ TABLE it_vbak INTO DATA(wa_vbak) WITH KEY vbeln = lwa_lips_likp-vbelv.
+        IF sy-subrc = 0.
+          wa_final-bstnk       = wa_vbak-bstnk.
+
+*          READ TABLE it_tvv3t INTO DATA(wa_tvv3t) WITH KEY kvgr3 = wa_vbak-kvgr3.
+*          IF sy-subrc = 0.
+*            wa_final-kvgr3     = wa_tvv3t-bezei.
+*          ENDIF.
+
+          IF lwa_lips_likp-vbelv IS NOT INITIAL.
+            lv_customer = wa_vbak-kunnr.
+
+            IF lv_customer IS NOT INITIAL.
+              CALL FUNCTION 'BAPI_OBJCL_GETDETAIL'
+                EXPORTING
+                  objectkey       = lv_customer
+                  objecttable     = 'KNA1'
+                  classnum        = 'ZYOHTA_CLASS'
+                  classtype       = '011'
+                  keydate         = sy-datum
+                  language        = sy-langu
+                TABLES
+                  allocvaluesnum  = it_allocvaluesnum
+                  allocvalueschar = it_allocvalueschar
+                  allocvaluescurr = it_allocvaluescurr
+                  return          = it_return.
+
+              IF sy-subrc = 0.
+                IF it_allocvalueschar IS NOT INITIAL.
+
+                  READ TABLE it_allocvalueschar WITH KEY charact  = 'ZYOH_FOBCUSTOMER' .
+                  IF it_allocvalueschar-value_char_long = 'TRUE'.
+                    wa_final-fob_nonfob = 'FOB'.
+                  ELSE.
+                    wa_final-fob_nonfob = 'NON-FOB'.
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+
+            ENDIF.
+          ELSE.
+            wa_final-fob_nonfob = 'WH'.
+          ENDIF.
+
+          IF wa_final-fob_nonfob IS INITIAL.
+            wa_final-fob_nonfob = 'NON-FOB'.
+          ENDIF.
+
+          REFRESH:  it_allocvaluesnum[],  it_allocvalueschar[], it_allocvaluescurr[], it_return[].
+          CLEAR: lv_customer.
+        ENDIF.
+
+      ENDIF.     "++BY . ON 16.04.2024
+
+
+      READ TABLE it_likp INTO DATA(wa_likp) WITH KEY vbeln = lwa_lips_likp-vbeln.
+      IF sy-subrc = 0.
+        wa_final-zetafin_date      = wa_likp-zexfact_date.
+        wa_final-zsail_date        = wa_likp-zsail_date.
+        wa_final-zoeta_dis_port    = wa_likp-zoeta_dis_port.
+        wa_final-eta_date          = wa_likp-zetafin_date.
+        wa_final-org_eta_f_date    = wa_likp-zetafin_date.
+        wa_final-zetadisc_port     = wa_likp-zetadisc_port.
+        wa_final-zarr_dat          = wa_likp-zarr_dat.
+        wa_final-zpick_up_dat      = wa_likp-zpick_up_dat.
+        wa_final-zport_dis         = wa_likp-zport_dis.
+        wa_final-zport_load        = wa_likp-zport_load.
+        wa_final-zfinal_dest       = wa_likp-zfinal_dest.
+        wa_final-zdeliv_mode       = wa_likp-zdeliv_mode.
+        wa_final-zcont_size        = wa_likp-zcont_size.
+        wa_final-zcust_ent_no      = wa_likp-zcust_ent_no.
+        wa_final-zshipping         = wa_likp-zshipping.
+        wa_final-zefcode           = wa_likp-zefcode.
+        wa_final-zbl_date          = wa_likp-zbl_date.
+        wa_final-status            = wa_likp-status.
+        wa_final-verur             = wa_likp-verur.
+        wa_final-mbol              = wa_likp-bolnr.
+        wa_final-ata_port_of_import = wa_likp-zport_dis.
+        wa_final-ort1               = wa_likp-zship_city.
+        wa_final-regio              = wa_likp-zship_state.
+
+        IF wa_likp-zetafin_date IS NOT INITIAL.
+
+          wa_final-month              = wa_likp-zetafin_date+4(2).
+          lv_date2 = wa_likp-zetafin_date .
+
+          CALL FUNCTION 'DATE_GET_WEEK'
+            EXPORTING
+              date         = lv_date2
+            IMPORTING
+              week         = wa_final-week2
+            EXCEPTIONS
+              date_invalid = 1
+              OTHERS       = 2.
+
+          wa_final-week = wa_final-week2+4(2).
+        ENDIF.
+
+
+        SELECT SINGLE *
+            FROM vttk
+            INTO @DATA(wa_vttk)
+            WHERE signi = @wa_likp-zzcontainer_no
+            AND exti2 = @wa_likp-bolnr
+*            AND shtyp = 'ZY01'.             "-- ON 28.12.2023
+            AND shtyp IN ( 'ZY01' , 'ZY04' ).              "++ ON 28.12.2023
+
+        IF wa_vttk IS NOT INITIAL.
+
+          SELECT SINGLE lifnr , name1
+            FROM lfa1
+            INTO @DATA(wa_lfa2)
+            WHERE lifnr = @wa_vttk-tdlnr.
+        ENDIF.
+
+        IF wa_lfa2 IS NOT INITIAL.
+          wa_final-forwarder_name = wa_lfa2-name1.    "++ by Ashish
+        ENDIF.
+*
+      ENDIF.
+
+
+      READ TABLE it_ekpo INTO DATA(wa_ekpo) WITH KEY ebeln = lwa_lips_likp-vgbel
+                                                     ebelp = lwa_lips_likp-vgpos.
+      IF sy-subrc = 0.
+
+        wa_final-ebeln          = wa_ekpo-ebeln.
+        wa_final-ebelp          = wa_ekpo-ebelp.
+        wa_final-matnr          = wa_ekpo-matnr.
+        wa_final-lgort          = wa_ekpo-lgort.
+        wa_final-netpr          = wa_ekpo-netpr.
+        wa_final-werks          = wa_ekpo-werks.
+
+
+        READ TABLE it_mara INTO DATA(wa_mara) WITH KEY matnr = wa_ekpo-matnr.
+        IF sy-subrc = 0.
+          wa_final-parent      = wa_mara-ferth.
+*          wa_final-ferth       = wa_mara-ferth.
+          wa_final-groes       = wa_mara-groes.
+          wa_final-brgew       = wa_mara-brgew.
+        ENDIF.
+
+        READ TABLE it_makt INTO DATA(wa_makt) WITH KEY matnr = wa_ekpo-matnr
+                                                       spras = 'Z'.
+        IF sy-subrc = 0.
+          wa_final-maktx       = wa_makt-maktx.
+        ELSE.
+          READ TABLE it_makt INTO DATA(wa_makt2) WITH KEY matnr = wa_ekpo-matnr
+                                                         spras = 'E'.
+          IF sy-subrc = 0.
+            wa_final-maktx       = wa_makt2-maktx.
+          ENDIF.
+        ENDIF.
+
+        READ TABLE it_ekko INTO DATA(wa_ekko) WITH KEY ebeln = wa_ekpo-ebeln.
+        IF sy-subrc = 0.
+          wa_final-lifnr       = wa_ekko-lifnr.
+          wa_final-kvgr3       = wa_ekko-zzoeaf.
+        ENDIF.
+
+        READ TABLE it_mvke INTO DATA(wa_mvke) WITH KEY matnr = wa_ekpo-matnr.
+        IF sy-subrc = 0.
+          wa_final-brand  = wa_mvke-mvgr1.
+
+          READ TABLE it_tvm1t INTO DATA(wa_tvm1t) WITH KEY mvgr1 = wa_mvke-mvgr1.
+          IF sy-subrc = 0.
+            wa_final-mvgr1    = wa_tvm1t-bezei.
+          ENDIF.
+
+          READ TABLE it_tvm2t INTO DATA(wa_tvm2t) WITH KEY mvgr2 = wa_mvke-mvgr2.
+          IF sy-subrc = 0.
+            wa_final-mvgr2    = wa_tvm2t-bezei.
+          ENDIF.
+
+          READ TABLE it_tvm3t INTO DATA(wa_tvm3t) WITH KEY mvgr3 = wa_mvke-mvgr3.
+          IF sy-subrc = 0.
+            wa_final-mvgr3    = wa_tvm3t-bezei.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+*-------------------------Removing leading zeros-------------------------------------------------------
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-lifnr
+        IMPORTING
+          output = wa_final-lifnr.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-ibd
+        IMPORTING
+          output = wa_final-ibd.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-sales_order_no
+        IMPORTING
+          output = wa_final-sales_order_no.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-customer_bill_to_no
+        IMPORTING
+          output = wa_final-customer_bill_to_no.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-salesperson_code
+        IMPORTING
+          output = wa_final-salesperson_code.
+
+*-------------------------------------------------------------------------------------------------------
+      lv_matnr1 = wa_final-matnr.
+      IF lv_matnr1 IS NOT INITIAL.
+        SELECT SINGLE * FROM ausp INTO @DATA(wa_ausp)
+             WHERE objek EQ @lv_matnr1
+             AND atinn EQ @lv_atinn1.
+        IF sy-subrc EQ 0.
+          wa_final-l_matnr = wa_ausp-atwrt.
+        ENDIF.
+      ENDIF.
+
+      APPEND wa_final TO it_final.
+    ENDIF.
+
+    CLEAR : wa_final, lwa_lips_likp, lv_date2,wa_ausp,lv_matnr1.
+  ENDLOOP.
+
+  IF it_final IS NOT INITIAL.
+    IF s_brand IS NOT INITIAL.
+      DELETE it_final WHERE brand NOT IN s_brand.
+    ENDIF.
+  ENDIF.
+
+
+ENDFORM.
+
+
+
+FORM display_alv.
+
+  IF it_final IS NOT INITIAL.
+    SORT it_final ASCENDING BY  werks ibd.
+    PERFORM build_fcat_row USING :
+
+      'IT_FINAL'      'ORT1'                     'Ship-to City '                         '20'   ''   ,
+      'IT_FINAL'      'REGIO'                    'Ship-to State '                        '20'   ''   ,
+      'IT_FINAL'      'ZZCONTAINER_NO'           'Container '                            '20'   ''   ,
+      'IT_FINAL'      'SALES_ORDER_NO'           'Sales Order No. '                      '20'   ''   ,
+      'IT_FINAL'      'EBELN'                    'Purchase Order Number '                '20'   ''   ,
+      'IT_FINAL'      'EBELP'                    'PO Line Number '                       '20'   ''   ,
+      'IT_FINAL'      'IBD'                      'Inbound Delivery No.'                  '20'   'X'   ,
+      'IT_FINAL'      'POSNR'                    'Inbound Delivery Line Item No.'        '20'   ''   ,
+      'IT_FINAL'      'LFIMG'                    'Inbound Delivery Quantity '            '20'   ''   ,
+      'IT_FINAL'      'MBOL'                     'MBOL '                                 '20'   ''   ,
+      'IT_FINAL'      'MATNR'                    'Material Number '                      '40'   ''   ,
+      'IT_FINAL'      'L_MATNR'                  'Nav legacy code'                       '40'   ''   ,
+      'IT_FINAL'      'PARENT'                   'Parent '                               '20'   ''   ,
+      'IT_FINAL'      'FERTH'                    'Cross-Reference No. '                  '20'   ''   ,
+      'IT_FINAL'      'GROES'                    'Size '                                 '20'   ''   ,
+      'IT_FINAL'      'MAKTX'                    'Material Description '                 '40'   ''   ,
+      'IT_FINAL'      'BRGEW'                    'Item Weight (kgs) '                    '20'   ''   ,
+      'IT_FINAL'      'BSTNK'                    'Customer P.O. '                        '20'   ''   ,
+      'IT_FINAL'      'ZETAFIN_DATE'             'Ex Factory Date '                      '20'   ''   ,
+      'IT_FINAL'      'ZSAIL_DATE'               'Sailing Date '                         '20'   ''   ,
+      'IT_FINAL'      'ZOETA_DIS_PORT'           'Original ETA Discharge '               '20'   ''   ,
+      'IT_FINAL'      'ORG_ETA_F_DATE'           'Original ETA Final Dest Date'          '20'   ''   ,
+      'IT_FINAL'      'ETA_DATE'                 'ETA Date '                             '20'   ''   ,
+      'IT_FINAL'      'ZETADISC_PORT'            'ETA Discharge Port '                   '20'   ''   ,
+      'IT_FINAL'      'ZARR_DAT'                 'Date Arrived '                         '20'   ''   ,
+      'IT_FINAL'      'ZPORT_DIS'                'Port of Discharge '                    '20'   ''   ,
+      'IT_FINAL'      'ZPORT_LOAD'               'Port of Loading '                      '20'   ''   ,
+      'IT_FINAL'      'LIFNR'                    'Vendor Number '                        '20'   ''   ,
+      'IT_FINAL'      'ZFINAL_DEST'              'FDN '                                  '20'   ''   ,
+      'IT_FINAL'      'ZDELIV_MODE'              'Delivery Mode '                        '20'   ''   ,
+      'IT_FINAL'      'ZCONT_SIZE'               'Container Size '                       '20'   ''   ,
+      'IT_FINAL'      'SELL_TO_CUSTOMER_NAME'    'Sell-to Customer Name '                '40'   ''   ,
+      'IT_FINAL'      'WERKS'                    'Plant '                                '20'   ''   ,
+      'IT_FINAL'      'LGORT'                    'Storage Location Code '                '20'   ''   ,
+      'IT_FINAL'      'ZSHIPPING'                'Shipping Line Details '                '20'   ''   ,
+      'IT_FINAL'      'VERUR'                    'External Document No. '                '20'   ''   ,
+      'IT_FINAL'      'FORWARDER_NAME'           'Forwarder Name '                       '40'   ''   ,
+      'IT_FINAL'      'NETPR'                    'Net Price '                            '20'   ''   ,
+      'IT_FINAL'      'ZZPROMOCODE'              'Promotion Code '                       '20'   ''   ,
+      'IT_FINAL'      'KVGR3'                    'Branch Code '                          '20'   ''   ,
+      'IT_FINAL'      'SALESPERSON_CODE'         'Salesperson Code '                     '20'   ''   ,
+      'IT_FINAL'      'SALESPERSON_CODE_NAME'    'Salesperson Name '                     '40'   ''   ,
+      'IT_FINAL'      'CUSTOMER_BILL_TO_NO'      'Customer Bill-to Number '              '20'   ''   ,
+      'IT_FINAL'      'NAME1'                    'Bill- to Customer Name '               '40'   ''   ,
+      'IT_FINAL'      'MVGR1'                    'Brand '                                '20'   ''   ,
+      'IT_FINAL'      'MVGR2'                    'Category Code '                        '20'   ''   ,
+      'IT_FINAL'      'MVGR3'                    'Sub-Cat Code '                         '20'   ''   ,
+*      'IT_FINAL'      'SALES_REP_CODE'           'Sales Rep Code '                       '20'   ''   ,
+      'IT_FINAL'      'ZTERM'                    'Payment Term Code '                    '20'   ''   ,
+      'IT_FINAL'      'ZBL_DATE'                 'BOL Date & Time '                      '20'   ''   ,
+      'IT_FINAL'      'STATUS'                   'Status '                               '20'   ''   ,
+      'IT_FINAL'      'MONTH'                    'Month '                                '20'   ''   ,
+      'IT_FINAL'      'WEEK'                     'Week '                                 '20'   ''   ,
+      'IT_FINAL'      'FOB_NONFOB'               'FOB/NON-FOB '                          '20'   ''   .
+
+
+    wa_layout-colwidth_optimize = 'X'.
+
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+      EXPORTING
+        i_callback_program       = sy-repid
+        i_callback_pf_status_set = 'SET_PF_STATUS'
+        i_callback_user_command  = 'USER_COMMAND'
+        is_layout                = wa_layout
+        it_fieldcat              = it_fieldcat
+      TABLES
+        t_outtab                 = it_final
+      EXCEPTIONS
+        program_error            = 1
+        OTHERS                   = 2.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+
+
+
+FORM build_fcat_row  USING  p_tabname
+                     p_fieldname
+                     p_seltext
+                     p_length
+                     p_hotspot  .
+
+
+  wa_fieldcat-tabname   = p_tabname.
+  wa_fieldcat-fieldname = p_fieldname.
+  wa_fieldcat-seltext_l = p_seltext.
+  wa_fieldcat-outputlen = p_length.
+  wa_fieldcat-hotspot = p_hotspot.
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR: wa_fieldcat.
+
+ENDFORM.
+
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZGUI'.
+ENDFORM.
+
+FORM user_command USING ucomm LIKE sy-ucomm
+                        selfield TYPE slis_selfield.
+  CASE selfield-fieldname.
+    WHEN 'IBD'.
+      READ TABLE it_final INDEX selfield-tabindex INTO DATA(lwa_output).
+      IF sy-subrc EQ 0.
+        SET PARAMETER ID 'VLM' FIELD lwa_output-ibd.
+        CALL TRANSACTION 'VL33N' AND SKIP FIRST SCREEN.
+      ENDIF.
+
+      CLEAR: selfield.
+  ENDCASE.
+
+ENDFORM.
+
+
+
+
+FORM upload_al11.
+  TYPES: BEGIN OF t_file,
+           text(1000) TYPE c,
+         END OF t_file.
+
+  DATA: lv_file           TYPE c LENGTH 200,
+        lwa_csv           TYPE t_file,
+        lh_csv            TYPE t_file,
+        filestamp         TYPE char200,
+        char_timestamp    TYPE char15,
+        gt_files          TYPE TABLE OF epsfili,
+        gw_files          TYPE epsfili,
+        filepath          TYPE epsf-epsdirnam,
+        lv_src            TYPE char100,
+        lv_dst            TYPE char100,
+
+        lv_lfimg          TYPE char16,
+        lv_brgew          TYPE char16,
+        lv_netpr          TYPE char13,
+        lv_zetafin_date   TYPE char10,
+        lv_zsail_date     TYPE char10,
+        lv_org_eta_f_date TYPE char10,
+        lv_eta_date       TYPE char10,
+        lv_zbl_date       TYPE char10,
+        lv_zarr_dat       TYPE char10,
+        lv_zetadisc_port  TYPE char10,
+        lv_zoeta_dis_port TYPE char10.
+
+  GET TIME STAMP FIELD  DATA(timestamp).
+  WRITE timestamp TO char_timestamp.
+
+  SELECT * FROM tvarvc INTO TABLE @DATA(it_tvarvc) WHERE name = 'ZYA_MMR073'.
+  READ TABLE it_tvarvc INTO DATA(wa_tvarvc) INDEX 1.
+  IF sy-subrc = 0.
+
+***""""""" SOA by Snehal M on 19/04/2024 for Archive old file """""""""*
+    filepath = wa_tvarvc-low.
+
+    CALL FUNCTION 'EPS_GET_DIRECTORY_LISTING'
+      EXPORTING
+        dir_name               = filepath
+      TABLES
+        dir_list               = gt_files
+      EXCEPTIONS
+        invalid_eps_subdir     = 1
+        sapgparam_failed       = 2
+        build_directory_failed = 3
+        no_authorization       = 4
+        read_directory_failed  = 5
+        too_many_read_errors   = 6
+        empty_directory_list   = 7
+        OTHERS                 = 8.
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                         WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+
+    DATA(file) = 'Incoming_Shipment_CSV.CSV'.
+
+    READ TABLE gt_files INTO gw_files WITH KEY name = file.
+    IF sy-subrc EQ 0.
+
+      CONCATENATE filepath '/' gw_files-name INTO lv_src.
+      CONCATENATE sy-datum(4) '-' sy-datum+6(2)'-' sy-datum+4(2) INTO filestamp.
+      CONCATENATE filepath '/' 'Incoming_Shipment_CSV_' filestamp sy-uzeit '.CSV'  INTO lv_dst.
+
+      CALL FUNCTION 'SCMS_FILE_COPY'
+        EXPORTING
+          src_filename = lv_src
+*         SRC_FRONTEND = ' '
+          dst_filename = lv_dst
+*         DST_FRONTEND = ' '
+        EXCEPTIONS
+          read_failed  = 1
+          write_failed = 2
+          OTHERS       = 3.
+
+      IF sy-subrc = 0.
+
+        CALL FUNCTION 'SCMS_FILE_DELETE'
+          EXPORTING
+            filename      = lv_src
+*           FRONTEND      = ' '
+          EXCEPTIONS
+            not_found     = 1
+            name_too_long = 2
+            OTHERS        = 3.
+        IF sy-subrc <> 0.
+        ENDIF.
+      ENDIF.
+
+      CLEAR :gw_files,lv_src,lv_dst.
+    ENDIF.
+***""""""" EOA by Snehal M on 19/04/2024 for Archive old file """""""""*
+
+
+*    CONCATENATE sy-datum(4) '-' sy-datum+6(2)'-' sy-datum+4(2) INTO filestamp.
+*    CONCATENATE wa_tvarvc-low '/IncomingShipmentStatusToCSV' wa_tvarvc-high INTO lv_file. " wa_tvarvc-high INTO lv_file.
+    CONCATENATE wa_tvarvc-low '/Incoming_Shipment_CSV' wa_tvarvc-high INTO lv_file. " wa_tvarvc-high INTO lv_file.
+
+    IF it_final[] IS NOT INITIAL.
+      OPEN DATASET lv_file FOR OUTPUT IN TEXT MODE ENCODING DEFAULT.
+
+      CONCATENATE
+                 'Ship-to City '
+                 'Ship-to State '
+                 'Inbound Delivery No.'
+                 'Container '
+                 'MBOL '
+                 'Inbound Delivery Line Item No.'
+                 'PO Line Number '
+                 'Material Number '
+                 'Nav legacy code'
+                 'Parent '
+                 'Cross-Reference No. '
+                 'Size '
+                 'Material Description '
+                 'Item Weight (kgs) '
+                 'Inbound Delivery Quantity '
+                 'Purchase Order Number '
+                 'Customer P.O. '
+                 'Sales Order No. '
+                 'Ex Factory Date '
+                 'Sailing Date '
+                 'Original ETA Discharge '
+                 'Original ETA Final Dest Date'
+                 'ETA Date '
+                 'ETA Discharge Port '
+                 'Date Arrived '
+                 'Port of Discharge '
+                 'Port of Loading '
+                 'Vendor Number '
+                 'FDN '
+                 'Delivery Mode '
+                 'Container Size '
+                 'Sell-to Customer Name '
+                 'Plant '
+                 'Storage Location Code '
+                 'Shipping Line Details '
+                 'External Document No. '
+                 'Forwarder Name '
+                 'Net Price '
+                 'Promotion Code '
+                 'Branch Code '
+                 'Salesperson Code '
+                 'Salesperson Name '
+                 'Customer Bill-to Number '
+                 'Bill- to Customer Name '
+                 'Brand '
+                 'Category Code '
+                 'Sub-Cat Code '
+                 'Payment Term Code '
+                 'BOL Date & Time '
+                 'Status '
+                 'Month '
+                 'Week '
+                 'FOB/NON-FOB '
+
+                  INTO lh_csv
+                  SEPARATED BY ','.
+
+      TRANSFER lh_csv TO lv_file.
+      CLEAR lh_csv.
+
+      CLEAR: wa_final.
+
+      LOOP AT it_final INTO wa_final.
+        lv_lfimg      =    wa_final-lfimg .
+        lv_brgew      =    wa_final-brgew .
+        lv_netpr      =    wa_final-netpr .
+
+        CONDENSE : lv_lfimg, lv_brgew, lv_netpr.
+
+        IF  wa_final-zetafin_date  IS NOT INITIAL.
+          CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+            EXPORTING
+              date_internal            = wa_final-zetafin_date
+            IMPORTING
+              date_external            = lv_zetafin_date
+            EXCEPTIONS
+              date_internal_is_invalid = 1
+              OTHERS                   = 2.
+        ENDIF.
+
+        IF  wa_final-zsail_date  IS NOT INITIAL.
+          CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+            EXPORTING
+              date_internal            = wa_final-zsail_date
+            IMPORTING
+              date_external            = lv_zsail_date
+            EXCEPTIONS
+              date_internal_is_invalid = 1
+              OTHERS                   = 2.
+        ENDIF.
+
+        IF  wa_final-org_eta_f_date  IS NOT INITIAL.
+          CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+            EXPORTING
+              date_internal            = wa_final-org_eta_f_date
+            IMPORTING
+              date_external            = lv_org_eta_f_date
+            EXCEPTIONS
+              date_internal_is_invalid = 1
+              OTHERS                   = 2.
+        ENDIF.
+
+        IF  wa_final-zoeta_dis_port  IS NOT INITIAL.
+          CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+            EXPORTING
+              date_internal            = wa_final-zoeta_dis_port
+            IMPORTING
+              date_external            = lv_zoeta_dis_port
+            EXCEPTIONS
+              date_internal_is_invalid = 1
+              OTHERS                   = 2.
+        ENDIF.
+
+        IF  wa_final-eta_date  IS NOT INITIAL.
+          CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+            EXPORTING
+              date_internal            = wa_final-eta_date
+            IMPORTING
+              date_external            = lv_eta_date
+            EXCEPTIONS
+              date_internal_is_invalid = 1
+              OTHERS                   = 2.
+        ENDIF.
+
+        IF  wa_final-zbl_date  IS NOT INITIAL.
+          CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+            EXPORTING
+              date_internal            = wa_final-zbl_date
+            IMPORTING
+              date_external            = lv_zbl_date
+            EXCEPTIONS
+              date_internal_is_invalid = 1
+              OTHERS                   = 2.
+        ENDIF.
+
+        IF  wa_final-zetadisc_port  IS NOT INITIAL.
+          CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+            EXPORTING
+              date_internal            = wa_final-zetadisc_port
+            IMPORTING
+              date_external            = lv_zetadisc_port
+            EXCEPTIONS
+              date_internal_is_invalid = 1
+              OTHERS                   = 2.
+        ENDIF.
+
+        IF  wa_final-zarr_dat  IS NOT INITIAL.
+          CALL FUNCTION 'CONVERT_DATE_TO_EXTERNAL'
+            EXPORTING
+              date_internal            = wa_final-zarr_dat
+            IMPORTING
+              date_external            = lv_zarr_dat
+            EXCEPTIONS
+              date_internal_is_invalid = 1
+              OTHERS                   = 2.
+        ENDIF.
+
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-groes WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-salesperson_code_name WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-maktx WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-sell_to_customer_name WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-kvgr3 WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-forwarder_name WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-mvgr1 WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-mvgr2 WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-mvgr3 WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-zfinal_dest WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-regio WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-zshipping WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-name1 WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-zterm WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-zport_dis WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN wa_final-zport_load WITH ';'.
+
+
+        CONCATENATE wa_final-ort1
+                 wa_final-regio
+                 wa_final-ibd
+                 wa_final-zzcontainer_no
+                 wa_final-mbol
+                 wa_final-posnr
+                 wa_final-ebelp
+                 wa_final-matnr
+                 wa_final-l_matnr
+                 wa_final-parent
+                 wa_final-ferth
+                 wa_final-groes
+                 wa_final-maktx
+                 lv_brgew
+                 lv_lfimg
+                 wa_final-ebeln
+                 wa_final-bstnk
+                 wa_final-sales_order_no
+                 lv_zetafin_date
+                 lv_zsail_date
+                 lv_zoeta_dis_port
+                 lv_org_eta_f_date
+                 lv_eta_date
+                 lv_zetadisc_port
+                 lv_zarr_dat
+                 wa_final-zport_dis
+                 wa_final-zport_load
+                 wa_final-lifnr
+                 wa_final-zfinal_dest
+                 wa_final-zdeliv_mode
+                 wa_final-zcont_size
+                 wa_final-sell_to_customer_name
+                 wa_final-werks
+                 wa_final-lgort
+                 wa_final-zshipping
+                 wa_final-verur
+                 wa_final-forwarder_name
+                 lv_netpr
+                 wa_final-zzpromocode
+                 wa_final-kvgr3
+                 wa_final-salesperson_code
+                 wa_final-salesperson_code_name
+                 wa_final-customer_bill_to_no
+                 wa_final-name1
+                 wa_final-mvgr1
+                 wa_final-mvgr2
+                 wa_final-mvgr3
+                 wa_final-zterm
+                 lv_zbl_date
+                 wa_final-status
+                 wa_final-month
+                 wa_final-week
+                 wa_final-fob_nonfob
+
+                INTO lwa_csv
+                SEPARATED BY ','.
+        TRANSFER lwa_csv TO lv_file.
+        CLEAR lwa_csv.
+
+
+        CLEAR: wa_final, lv_lfimg, lv_netpr, lv_brgew, lv_zetafin_date, lv_zsail_date,
+               lv_org_eta_f_date , lv_eta_date , lv_zbl_date, lv_zarr_dat, lv_zetadisc_port, lv_zoeta_dis_port  .
+
+      ENDLOOP.
+      CLOSE DATASET lv_file.
+      WAIT UP TO 1 SECONDS.
+      MESSAGE 'File Stored in AL11' TYPE 'S'.
+
+    ELSE.
+      MESSAGE 'No Data Found' TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
+  ELSE.
+    MESSAGE 'File Path not found' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+
+ENDFORM.
