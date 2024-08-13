@@ -1,0 +1,612 @@
+INCLUDE zya_mmc_info_record_creation_s.
+INCLUDE zya_mmc_info_record_creation_t.
+INCLUDE zya_mmc_info_record_creation_f.
+
+AT SELECTION-SCREEN OUTPUT.
+
+  IF r1 = 'X'.
+    LOOP AT SCREEN.
+      IF screen-group1 = 'AAA'.
+        screen-active = 1.
+        screen-input = 1.
+      ENDIF.
+      MODIFY SCREEN.
+    ENDLOOP.
+
+  ELSEIF r2 = 'X'.
+    LOOP AT SCREEN.
+      IF screen-group1 = 'AAA'.
+        screen-active = 0.
+        screen-input = 0.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+
+*-------------------------------------------------------------------------------------------------*
+* Events: At Selection-Screen
+*-------------------------------------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  PERFORM get_file.
+
+
+
+START-OF-SELECTION.
+  IF r1 = 'X'.
+    PERFORM read_data_from_file.
+*    PERFORM upload_bdc.
+    IF gt_data IS NOT INITIAL.
+      PERFORM upload_bdc1.
+      PERFORM display.
+    ELSE.
+      MESSAGE 'File Not Uploaded \ Error In File' TYPE 'S' DISPLAY LIKE 'E'.
+      LEAVE LIST-PROCESSING.
+    ENDIF.
+  ELSEIF r2 = 'X'.
+    PERFORM get_template.
+  ENDIF.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMC_INFO_RECORD_CREATION_S1
+*&---------------------------------------------------------------------*
+
+TABLES: rcgfiletr.
+
+SELECTION-SCREEN:   SKIP 1, BEGIN OF BLOCK a1 WITH FRAME .
+  PARAMETERS: p_file TYPE rcgfiletr-ftfront MODIF ID aaa,
+              p_mode TYPE c MODIF ID aaa DEFAULT 'N'.
+
+SELECTION-SCREEN: END OF BLOCK a1 .
+
+
+SELECTION-SCREEN: BEGIN OF BLOCK b WITH FRAME TITLE TEXT-001 .
+  PARAMETERS : r1 RADIOBUTTON GROUP rad1  DEFAULT 'X' USER-COMMAND rd,
+               r2 RADIOBUTTON GROUP rad1.
+SELECTION-SCREEN : END OF BLOCK b.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMC_INFO_RECORD_CREATION_T1
+*&---------------------------------------------------------------------*
+TABLES: t100, eina, eine, rv13a.
+
+TYPES : BEGIN OF ty_tab ,
+          lifnr(010),         "Vendor No.
+          matnr(040),         "Material No.
+          ekorg(004),         "Purchase Org.
+          werks(004),         "Plant
+          idnlf(035),         "Supplier Material
+          meins(003),         "Order Unit
+          aplfz(003),         "Pl. Deliv. Time
+          ekgrp(003),         "Purchase Group
+          norbm(017),         "Standard Quantity
+          bstae(004),         "Confirmation Control Key
+          mwskz(002),         "Tax Code
+          netpr(014),         "Net Price
+
+        END OF ty_tab.
+
+DATA : BEGIN OF it_error OCCURS 0,
+         lifnr      TYPE eina-lifnr,
+         matnr      TYPE eina-matnr,
+         werks      TYPE eine-werks,
+         msgtyp     TYPE bdcmsgcoll-msgtyp,
+*         msgv1  TYPE bdcmsgcoll-msgv1,
+         msgv1(200) TYPE c,
+         msgv2      TYPE bdcmsgcoll-msgv1,
+         msgv3      TYPE bdcmsgcoll-msgv1,
+         msgv4      TYPE bdcmsgcoll-msgv1,
+       END OF it_error,
+
+       gt_data        TYPE STANDARD TABLE OF TY_tab,
+       gt_data2       TYPE STANDARD TABLE OF TY_tab,
+       gs_data        LIKE LINE OF gt_data,
+       bdcdata        LIKE bdcdata  OCCURS 0 WITH HEADER LINE,
+       messtab        LIKE bdcmsgcoll OCCURS 0 WITH HEADER LINE,
+       l_mstring(480),
+       cnt            TYPE n,  "" VALUE '0'.
+       v_field        TYPE string,
+
+       ztype          TYPE mara-mtart,
+       zdyn(30)       TYPE c,
+
+       it_fieldcat    TYPE slis_t_fieldcat_alv,
+       wa_fieldcat    TYPE slis_fieldcat_alv,
+       wa_layout      TYPE slis_layout_alv.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMC_INFO_RECORD_CREATION_F1
+*&---------------------------------------------------------------------*
+
+FORM get_file .
+
+  DATA : lt_filetable TYPE filetable,
+         lw_filetable LIKE LINE OF lt_filetable,
+         lv_rc        TYPE i.
+
+  REFRESH: lt_filetable .
+  CLEAR: lv_rc.
+
+  cl_gui_frontend_services=>file_open_dialog(
+    EXPORTING
+      window_title            = 'Browse File'    " Title Of File Open Dialog
+    CHANGING
+      file_table              = lt_filetable    " Table Holding Selected Files
+      rc                      = lv_rc    " Return Code, Number of Files or -1 If Error Occurred
+    EXCEPTIONS
+      file_open_dialog_failed = 1
+      cntl_error              = 2
+      error_no_gui            = 3
+      not_supported_by_gui    = 4
+      OTHERS                  = 5
+  ).
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+  READ TABLE lt_filetable INTO lw_filetable INDEX 1.
+  p_file = lw_filetable-filename.
+ENDFORM.
+
+
+
+FORM read_data_from_file .
+
+  DATA : lv_filename TYPE rlgrap-filename,
+         lt_intern   TYPE STANDARD TABLE OF  alsmex_tabline.
+
+  lv_filename = p_file.
+
+  REFRESH : lt_intern, gt_data.
+
+
+  CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+    EXPORTING
+      filename                = lv_filename
+      i_begin_col             = '1'
+      i_begin_row             = '2'
+      i_end_col               = '256'
+      i_end_row               = '950000'
+    TABLES
+      intern                  = lt_intern
+    EXCEPTIONS
+      inconsistent_parameters = 1
+      upload_ole              = 2
+      OTHERS                  = 3.
+  IF sy-subrc <> 0.
+* Implement sugt_datale error handling here
+  ENDIF.
+
+
+  FIELD-SYMBOLS <fs_intern> LIKE LINE OF lt_intern.
+  FIELD-SYMBOLS <fs_value> TYPE any.
+
+  LOOP AT lt_intern ASSIGNING <fs_intern>.
+
+    ASSIGN COMPONENT <fs_intern>-col OF STRUCTURE gs_data TO <fs_value>.
+    <fs_value> = <fs_intern>-value.
+
+    AT END OF row.
+      APPEND gs_data TO gt_data.
+      CLEAR gs_data.
+    ENDAT.
+  ENDLOOP.
+
+
+
+ENDFORM.
+
+
+
+
+FORM upload_bdc1.
+
+  DATA: lv_msg(100)      TYPE c,
+        lv_aplfz_msg(50) TYPE c,
+        lv_meins_msg(50) TYPE c,
+        lv_norbm_msg(50) TYPE c,
+        lv_netpr_msg(50) TYPE c,
+        lv_msg1(200)     TYPE c,
+        lv_lifnr1        TYPE lifnr.
+
+  REFRESH: bdcdata.
+  CLEAR: gs_data.
+
+  LOOP AT gt_data INTO DATA(wa_data).
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        input  = wa_data-lifnr
+      IMPORTING
+        output = wa_data-lifnr.
+    MODIFY gt_data FROM wa_data TRANSPORTING lifnr.
+
+    CLEAR wa_data.
+  ENDLOOP.
+
+  SELECT eina~infnr , eina~matnr, eina~lifnr, eine~werks, eine~ekorg
+   FROM eina
+     INNER JOIN eine
+     ON eine~infnr = eina~infnr
+   INTO TABLE @DATA(it_eina)
+   FOR ALL ENTRIES IN @gt_data
+   WHERE eina~lifnr = @gt_data-lifnr
+   AND eina~matnr = @gt_data-matnr
+   AND eine~werks = @gt_data-werks
+    AND eine~ekorg = '3000'.
+
+
+  LOOP AT gt_data INTO gs_data.
+    REFRESH: bdcdata[].
+
+*    COMMIT WORK.
+    "checking for material and lifnr is exist then extending both plant into one info record   added on 24.11 2023 by ashish
+
+    WAIT UP TO 1 SECONDS.           "don't comment this
+*CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+*  EXPORTING
+*    input         = gs_data-lifnr
+* IMPORTING
+*   OUTPUT        = lv_lifnr1.
+*
+
+    SELECT SINGLE matnr, lifnr, infnr
+     FROM eina
+     INTO @DATA(wa_eina2)
+     WHERE eina~lifnr = @gs_data-lifnr
+     AND eina~matnr = @gs_data-matnr.
+*-----------------------------------------------------------------------------------------------
+
+    IF gs_data-aplfz IS INITIAL.
+      lv_aplfz_msg = 'Pl. Deliv. Time should not be blank'.
+    ENDIF.
+
+    IF gs_data-meins IS INITIAL.
+      lv_meins_msg = 'Order Unit should not be blank'.
+    ENDIF.
+
+    IF gs_data-norbm IS INITIAL.
+      lv_norbm_msg = 'Standard Quantity should not be blank'.
+    ENDIF.
+
+    IF gs_data-netpr IS INITIAL.
+      lv_netpr_msg = 'Net Price should not be blank'.
+    ENDIF.
+
+    IF gs_data-aplfz IS  INITIAL OR  gs_data-meins IS  INITIAL OR gs_data-norbm IS  INITIAL OR gs_data-netpr IS  INITIAL.
+
+      CONCATENATE lv_aplfz_msg lv_meins_msg lv_norbm_msg lv_netpr_msg INTO lv_msg1 SEPARATED BY space.
+
+      it_error-lifnr = gs_data-lifnr.
+      it_error-matnr = gs_data-matnr.
+      it_error-werks = gs_data-werks.
+      it_error-msgtyp =  'E'.
+      it_error-msgv1 = lv_msg1.
+      APPEND it_error.
+
+
+      CLEAR: lv_aplfz_msg, lv_meins_msg, lv_norbm_msg, lv_netpr_msg , lv_msg1.
+    ELSEIF gs_data-aplfz IS NOT INITIAL AND  gs_data-meins IS NOT INITIAL AND gs_data-norbm IS NOT INITIAL AND gs_data-netpr IS NOT INITIAL.
+
+      READ TABLE it_eina INTO DATA(wa_eina) WITH KEY matnr = gs_data-matnr
+                                                         lifnr = gs_data-lifnr
+                                                         werks = gs_data-werks
+                                                         ekorg = gs_data-ekorg.
+      IF sy-subrc NE 0.                 "check for existing record
+
+
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+          EXPORTING
+            input  = gs_data-bstae
+          IMPORTING
+            output = gs_data-bstae.
+
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+          EXPORTING
+            input  = gs_data-lifnr
+          IMPORTING
+            output = gs_data-lifnr.
+
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+          EXPORTING
+            input  = wa_eina2-lifnr
+          IMPORTING
+            output = wa_eina2-lifnr.
+
+
+
+        PERFORM bdc_dynpro      USING 'SAPMM06I' '0100'.
+        PERFORM bdc_field       USING 'BDC_CURSOR'
+                                      'RM06I-NORMB'.
+        PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '/00'.
+        PERFORM bdc_field       USING 'EINA-LIFNR'
+                                      gs_data-lifnr.
+        PERFORM bdc_field       USING 'EINA-MATNR'
+                                      gs_data-matnr.
+        PERFORM bdc_field       USING 'EINE-EKORG'
+                                      gs_data-ekorg.
+        PERFORM bdc_field       USING 'EINE-WERKS'
+                                      gs_data-werks.
+        PERFORM bdc_field       USING 'RM06I-NORMB'
+                                      'X'.
+
+        PERFORM bdc_dynpro      USING 'SAPMM06I' '0101'.
+
+        PERFORM bdc_field       USING 'BDC_CURSOR'
+                                      'EINA-IDNLF'.
+        PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '=EINE'.
+
+        IF wa_eina2-matnr = gs_data-matnr AND wa_eina2-lifnr = gs_data-lifnr.      "added on 24.11 2023 by ashish
+
+        ELSE.
+          "check for existing record
+
+          PERFORM bdc_field       USING 'EINA-IDNLF'
+                                        gs_data-idnlf.
+          PERFORM bdc_field       USING 'EINA-MEINS'
+                                        gs_data-meins.
+        ENDIF.
+        PERFORM bdc_dynpro      USING 'SAPMM06I' '0102'.
+        PERFORM bdc_field       USING 'BDC_CURSOR'
+                                      'EINE-NETPR'.
+        PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '=BU'.
+        PERFORM bdc_field       USING 'EINE-APLFZ'
+                                      gs_data-aplfz.
+        PERFORM bdc_field       USING 'EINE-EKGRP'
+                                      gs_data-ekgrp.
+        PERFORM bdc_field       USING 'EINE-NORBM'
+                                      gs_data-norbm.
+        PERFORM bdc_field       USING 'EINE-BSTAE'
+                                      gs_data-bstae.
+        PERFORM bdc_field       USING 'EINE-MWSKZ'
+                                      gs_data-mwskz.
+        PERFORM bdc_field       USING 'EINE-NETPR'
+                                      gs_data-netpr.
+
+
+        CALL TRANSACTION 'ME11' USING bdcdata MODE p_mode  MESSAGES INTO messtab.
+        IF messtab[] IS NOT INITIAL.
+
+          LOOP AT messtab WHERE ( msgtyp = 'E' OR msgtyp = 'S' ).
+
+            IF messtab-msgv1 IS NOT INITIAL.
+
+              SELECT SINGLE * FROM t100 WHERE sprsl = messtab-msgspra
+                                               AND   arbgb = messtab-msgid
+                                               AND   msgnr = messtab-msgnr.
+              IF sy-subrc = 0.
+                l_mstring = t100-text.
+                IF l_mstring CS '&1'.
+                  REPLACE '&1' WITH messtab-msgv1 INTO l_mstring.
+                  REPLACE '&2' WITH messtab-msgv2 INTO l_mstring.
+                  REPLACE '&3' WITH messtab-msgv3 INTO l_mstring.
+                  REPLACE '&4' WITH messtab-msgv4 INTO l_mstring.
+                ELSE.
+                  REPLACE '&' WITH messtab-msgv1 INTO l_mstring.
+                  REPLACE '&' WITH messtab-msgv2 INTO l_mstring.
+                  REPLACE '&' WITH messtab-msgv3 INTO l_mstring.
+                  REPLACE '&' WITH messtab-msgv4 INTO l_mstring.
+                ENDIF.
+                CONDENSE l_mstring.
+              ENDIF.
+
+              it_error-lifnr = gs_data-lifnr.
+              it_error-matnr = gs_data-matnr.
+              it_error-werks = gs_data-werks.
+              it_error-msgtyp =  messtab-msgtyp.
+              it_error-msgv1 = l_mstring.
+              APPEND it_error.
+
+              CLEAR messtab.
+            ENDIF.
+*        ENDIF.
+          ENDLOOP.
+
+        ENDIF.
+
+        REFRESH messtab[].
+
+
+        CLEAR:  bdcdata[] .
+
+
+      ELSEIF sy-subrc = 0.
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+          EXPORTING
+            input  = gs_data-lifnr
+          IMPORTING
+            output = gs_data-lifnr.
+
+        it_error-lifnr = gs_data-lifnr.
+        it_error-msgtyp =  'E'.
+        it_error-werks = gs_data-werks.
+        it_error-matnr = gs_data-matnr.
+        CONCATENATE 'Purchasing info record' wa_eina-infnr gs_data-ekorg gs_data-werks 'already exists' INTO lv_msg SEPARATED BY space.
+        it_error-msgv1 = lv_msg.
+        APPEND it_error.
+      ENDIF.
+
+    ENDIF.
+    CLEAR: gs_data, lv_msg, wa_eina2.
+    CLEAR: lv_aplfz_msg, lv_meins_msg, lv_norbm_msg, lv_netpr_msg , lv_msg1.
+
+  ENDLOOP.
+ENDFORM.
+
+
+
+FORM bdc_dynpro USING program dynpro.
+  CLEAR bdcdata.
+  bdcdata-program  = program.
+  bdcdata-dynpro   = dynpro.
+  bdcdata-dynbegin = 'X'.
+  APPEND bdcdata.
+ENDFORM.                    "bdc_dynpro
+*----------------------------------------------------------------------*
+*        Insert field                                                  *
+*----------------------------------------------------------------------*
+FORM bdc_field USING fnam fval.
+*  if fval <> nodata.
+  CLEAR bdcdata.
+  bdcdata-fnam = fnam.
+  bdcdata-fval = fval.
+  APPEND bdcdata.
+*  endif.
+ENDFORM.
+
+FORM display .
+  IF it_error[] IS NOT INITIAL.
+    PERFORM build_fcat_row USING :
+
+   'IT_ERROR'      'LIFNR'              'Vendor Number'               ,
+   'IT_ERROR'      'MATNR'              'Material Number'               ,
+   'IT_ERROR'      'WERKS'              'Plant'                     ,
+   'IT_ERROR'      'MSGTYP'             'Message Type'               ,
+   'IT_ERROR'      'MSGV1'              'Success\Error Message'       .
+
+
+    wa_layout-colwidth_optimize = 'X'.
+
+
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+      EXPORTING
+        i_callback_program = sy-repid
+*       i_callback_pf_status_set = 'SET_PF_STATUS'
+        is_layout          = wa_layout
+        it_fieldcat        = it_fieldcat
+      TABLES
+        t_outtab           = it_error
+      EXCEPTIONS
+        program_error      = 1
+        OTHERS             = 2.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+
+
+
+FORM build_fcat_row  USING  p_tabname
+                     p_fieldname
+                     p_seltext
+                     .
+
+
+  wa_fieldcat-tabname   = p_tabname.
+  wa_fieldcat-fieldname = p_fieldname.
+  wa_fieldcat-seltext_l = p_seltext.
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR: wa_fieldcat.
+
+ENDFORM.
+
+
+
+
+
+FORM get_template.
+  DATA: lt_header TYPE string_table,
+        ls_header TYPE  string,
+        lv_fname1 TYPE string,
+        lv_path1  TYPE string,
+        lv_fpath1 TYPE string.
+
+
+
+  CLEAR ls_header.
+  REFRESH lt_header.
+
+  ls_header =
+     'Vendor No. '                     &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Material No. '                   &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Purchase Org. '                  &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Plant '                          &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Supplier Material '              &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Order Unit '                     &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Pl. Deliv. Time '                &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Purchase Group '                 &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Standard Quantity '              &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Confirmation Control Key '       &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Tax Code '                       &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Net Price '                      &&      cl_abap_char_utilities=>horizontal_tab && cl_abap_char_utilities=>newline .
+
+
+  APPEND ls_header TO lt_header.
+
+
+  CALL METHOD cl_gui_frontend_services=>file_save_dialog
+    EXPORTING
+      window_title              = 'Save File'
+      default_extension         = 'XLSX'
+      default_file_name         = 'Info Record Upload Template'
+    CHANGING
+      filename                  = lv_fname1
+      path                      = lv_path1
+      fullpath                  = lv_fpath1
+    EXCEPTIONS
+      cntl_error                = 1
+      error_no_gui              = 2
+      not_supported_by_gui      = 3
+      invalid_default_file_name = 4
+      OTHERS                    = 5.
+  IF sy-subrc <> 0.
+
+  ENDIF.
+
+  CHECK lv_fpath1 IS NOT INITIAL.
+
+
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+*     BIN_FILESIZE            =
+      filename                = lv_fpath1
+      filetype                = 'ASC'
+*     APPEND                  = SPACE
+      write_field_separator   = 'X'
+*  IMPORTING
+*     FILELENGTH              =
+    CHANGING
+      data_tab                = lt_header
+    EXCEPTIONS
+      file_write_error        = 1
+      no_batch                = 2
+      gui_refuse_filetransfer = 3
+      invalid_type            = 4
+      no_authority            = 5
+      unknown_error           = 6
+      header_not_allowed      = 7
+      separator_not_allowed   = 8
+      filesize_not_allowed    = 9
+      header_too_long         = 10
+      dp_error_create         = 11
+      dp_error_send           = 12
+      dp_error_write          = 13
+      unknown_dp_error        = 14
+      access_denied           = 15
+      dp_out_of_memory        = 16
+      disk_full               = 17
+      dp_timeout              = 18
+      file_not_found          = 19
+      dataprovider_exception  = 20
+      control_flush_error     = 21
+      not_supported_by_gui    = 22
+      error_no_gui            = 23
+      OTHERS                  = 24.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+*
+
+
+ENDFORM.
