@@ -1,0 +1,1436 @@
+INCLUDE zya_mmr_direct_order_recon_t1.
+INCLUDE zya_mmr_direct_order_recon_s1.
+INCLUDE zya_mmr_direct_order_recon_f1.
+
+START-OF-SELECTION.
+
+  PERFORM getdata.
+  IF it_final IS NOT INITIAL.
+    PERFORM display_data.
+  ELSE.
+    MESSAGE 'Data Not Found ' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_WH_ORDER_RECONCILN_T1
+*&---------------------------------------------------------------------*
+
+TABLES: ekpo, ekko, vbap, vbak.
+
+TYPES: BEGIN OF ty_final,
+         lifnr          TYPE ekko-lifnr,                     "Vendor
+         yohta_so       TYPE vbap-vbeln,
+         yohta_so_item  TYPE vbap-posnr,
+         yohta_so_qty   TYPE vbap-kwmeng,
+         cust_deldate   TYPE vbap-erdat,
+         del_insts      TYPE char40,
+         pur_req        TYPE ebkn-banfn,
+         pur_itm        TYPE ebkn-bnfpo,
+         pur_qty        TYPE ebkn-menge,
+         ebeln          TYPE ekko-ebeln,                     "YOHTA Purchase Order
+         ebelp          TYPE ekpo-ebelp,                     "YOHTA PO Item
+         bedat          TYPE ekko-bedat,                     "YOHTA PO Date
+         zzoeaf         TYPE ekko-zzoeaf,                    "Branch Code
+         werks          TYPE ekpo-werks,                     "Plant
+         lgort          TYPE ekpo-lgort,                     "Location
+         kunnr          TYPE vbak-kunnr,                     "Customer
+         cust_name      TYPE kna1-name1,                     "Customer Name
+         matnr          TYPE ekpo-matnr,                     "Material
+         maktx          TYPE makt-maktx,                     "Material Description
+         menge          TYPE ekpo-menge, "cdpos-value_old,                "PO Original Qty
+         current_po_qty TYPE ekpo-menge,                     "Current PO Qty
+         container_fill TYPE ekpo-menge,                     "Container Fill % ( Balance Qty )
+         tons           TYPE ekpo-menge,                     "Tons ( Balance Qty )
+         grn_qty        TYPE ekpo-menge,                     "GRN Qty
+         lfimg1         TYPE lips-lfimg,                     "IBD Shipped Qty
+         lfimg2         TYPE lips-lfimg,                     "IBD Open Qty
+         remaining_qty  TYPE lips-lfimg,                     "YOHTA Remaining Qty ( Balance qty excluding in transit and ASN )
+         atc_plant      TYPE vbap-werks,                     "ATC Plant
+         kunnr_we       TYPE vbak-kunnr,                     "Ship to Party No.
+         name1          TYPE kna1-name1,                     "Ship to Party Name
+         bstnk          TYPE vbak-bstnk,                     "Customer Reference
+         vbeln          TYPE vbak-vbeln,                     "ATC Sales Order
+         posnr          TYPE vbap-posnr,                     "ATC SO Item
+         kwmeng         TYPE vbap-kwmeng,                    "Order Qty
+         promise_qty    TYPE vbap-kwmeng,                    "Promise Qty
+         delete_qty     TYPE vbap-kwmeng,                    "Delete Qty
+         shipped_qty    TYPE vbap-kwmeng,                    "Shipped Qty
+         balance_qty    TYPE vbap-kwmeng,                    "Balance Qty
+         difference_qty TYPE vbap-kwmeng,                    "Difference ( YOHTA PO Qty - ATC SO Balance Qty )
+         remarks        TYPE char40,                         "Remarks
+
+       END OF ty_final.
+
+DATA: it_final    TYPE TABLE OF ty_final,
+      wa_final    TYPE ty_final,
+      it_fieldcat TYPE slis_t_fieldcat_alv,
+      wa_fieldcat TYPE slis_fieldcat_alv,
+      wa_layout   TYPE slis_layout_alv.
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_WH_ORDER_RECONCILN_S1
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS: s_vbeln FOR vbap-vbeln,   "yohta so
+                  s_erdat FOR vbak-erdat OBLIGATORY,   "yohta co creation date
+                  s_kunnr FOR vbak-kunnr,
+                  s_ship  FOR vbap-kunwe_ana.
+***                s_ebeln FOR vbak-bstnk.
+***                  s_bedat FOR ekko-bedat,
+***                  s_lifnr FOR ekko-lifnr.
+*                  s_matnr FOR ekpo-matnr,
+*                  s_werks FOR ekpo-werks.
+SELECTION-SCREEN END OF BLOCK b1.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_WH_ORDER_RECONCILN_F1
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form getdata
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM getdata .
+  TYPES:
+    BEGIN OF ty_ekpo1,
+      ebeln  TYPE cdpos-objectid,
+      ebelp  TYPE ekpo-ebelp,
+      tabkey TYPE cdpos-tabkey,
+    END OF ty_ekpo1,
+
+    BEGIN OF ty_ekko_vbak,
+      ebeln TYPE vbak-bstnk,
+      erdat TYPE ekpo-aedat,
+    END OF ty_ekko_vbak,
+
+    BEGIN OF ty_vbak_vp,
+      ebeln TYPE ekpo-ebeln,
+    END OF ty_vbak_vp,
+
+    BEGIN OF ty_ekpo_vbak,
+      bstnk TYPE ekpo-ebeln,
+      vbeln TYPE vbap-vbeln,
+      posnr TYPE vbap-posnr,
+    END OF ty_ekpo_vbak.
+
+
+
+
+  DATA: it_ekpo1        TYPE TABLE OF ty_ekpo1,
+        wa_ekpo1        TYPE ty_ekpo1,
+
+        it_ekpo1_po     TYPE TABLE OF ty_ekpo1,
+        wa_ekpo1_po     TYPE ty_ekpo1,
+
+        it_ekko_vbak    TYPE TABLE OF ty_ekko_vbak,
+        wa_ekko_vbak    TYPE ty_ekko_vbak,
+
+        it_vbak_vbap2   TYPE TABLE OF ty_vbak_vp,
+        wa_vbak_vp      TYPE ty_vbak_vp,
+
+        it_ekpo_vbak    TYPE TABLE OF ty_ekpo_vbak,
+        wa_ekpo_vbak    TYPE ty_ekpo_vbak,
+
+        lv_tot          TYPE lips-lfimg,
+        lv_tot1         TYPE lips-lfimg,
+        lv_tot3         TYPE lips-lfimg,
+
+        lv_delete_qty   TYPE vbep-wmeng,
+        lv_promise_qty  TYPE vbep-wmeng,
+
+        lv_lifnr        TYPE ekko-lifnr,
+        lv_delete_qty1  TYPE vbep-wmeng,
+        lv_promise_qty1 TYPE vbep-wmeng,
+        lv_qty          TYPE vbep-wmeng,
+
+        lv_shipped_qty  TYPE vbrp-fkimg,
+        lv_shipped_qty1 TYPE vbrp-fkimg,
+
+        lv_delete_qty2  TYPE vbep-wmeng,
+        lv_promise_qty2 TYPE vbep-wmeng,
+        lv_shipped_qty2 TYPE vbrp-fkimg,
+
+        it_text2        TYPE TABLE OF tline,
+        wa_text2        TYPE tline,
+        lv_text_name    TYPE thead-tdname,
+
+        lv_eket_wemng   TYPE eket-wemng,
+        lv_eket_wemng2  TYPE eket-wemng.
+
+
+*-----------------------------------------------------------------------------------
+  TYPES: BEGIN OF ty_ekko_vbkd,
+           ebeln TYPE vbkd-bstkd_e,
+         END OF ty_ekko_vbkd.
+
+
+  DATA: it_ekko_vbkd TYPE TABLE OF ty_ekko_vbkd,
+        wa_ekko_vbkd TYPE ty_ekko_vbkd.
+*-------------------------------------------------------------------------------------
+
+
+  SELECT vk~vbeln, vk~erdat, vk~bstnk, vk~kunnr, vk~vkorg, vk~vtweg, vk~kvgr1, vk~kvgr4, vk~kvgr3, vk~vdatu,
+           vp~posnr, vp~kunwe_ana, vp~werks, vp~matnr, vp~kwmeng
+      FROM vbak AS vk
+      INNER JOIN vbap AS vp
+      ON vk~vbeln = vp~vbeln
+      WHERE vk~vbeln IN @s_vbeln
+*      AND vk~bstnk IN @s_ebeln
+*      AND vk~bstdk IN @s_bedat
+      AND vk~erdat IN @s_erdat
+      AND vk~kunnr IN @s_kunnr
+      AND vk~vkorg = '3000'
+      AND vk~vtweg = '20'
+      AND vp~werks IN ( '3401', '3402' )
+      AND vp~kunwe_ana IN @s_ship
+      INTO TABLE @DATA(it_vbak_vbap).
+
+  IF it_vbak_vbap IS NOT INITIAL.
+
+    SORT it_vbak_vbap ASCENDING BY vbeln posnr.
+
+    SELECT matnr, maktx, spras
+       FROM makt
+       INTO TABLE @DATA(it_makt)
+       FOR ALL ENTRIES IN @it_vbak_vbap
+       WHERE matnr = @it_vbak_vbap-matnr
+       AND spras = 'E'.
+***       AND spras IN ( 'E', 'Z' )  .
+
+    SELECT ebeln, ebelp, vbeln, vbelp
+      FROM ekkn
+      INTO TABLE @DATA(it_ekkn)
+      FOR ALL ENTRIES IN @it_vbak_vbap
+*      WHERE ebeln  IN @s_ebeln.
+      WHERE vbeln  = @it_vbak_vbap-vbeln.
+
+
+    SELECT kunnr, name1
+        FROM kna1
+        INTO TABLE @DATA(it_kna2)
+        FOR ALL ENTRIES IN @it_vbak_vbap
+        WHERE kunnr = @it_vbak_vbap-kunnr.
+*  ENDIF.           it_vbak_vbap       --on 05.01.2024
+
+    SELECT ek~ebeln, ek~lifnr, ek~zzoeaf, ek~bedat,
+           ep~ebelp, ep~matnr, ep~werks, ep~lgort, ep~menge, ep~ntgew
+           FROM ekko AS ek
+           INNER JOIN ekpo AS ep
+           ON ek~ebeln = ep~ebeln
+           FOR ALL ENTRIES IN @it_ekkn                   " ------------------------------------------
+           WHERE ek~ebeln = @it_ekkn-ebeln
+***         AND ek~lifnr   IN @s_lifnr
+***         AND ek~bedat   IN @s_bedat
+           AND ek~bukrs   = '3000'
+           AND ep~loekz   NE 'X'
+           INTO TABLE @DATA(it_ekko_ekpo).
+
+    SELECT matnr, bklas
+      FROM mbew
+      INTO TABLE @DATA(it_mbew)
+      FOR ALL ENTRIES IN @it_vbak_vbap
+      WHERE matnr = @it_vbak_vbap-matnr
+      AND bklas  IN ( '6502' , '6504' , '6506' , '6509' ).
+
+
+    IF it_ekko_ekpo IS NOT INITIAL.
+
+      SORT it_ekko_ekpo ASCENDING BY ebeln ebelp.
+
+      SELECT banfn , bnfpo, vbeln, vbelp, menge
+        FROM ebkn
+        INTO TABLE @DATA(it_ebkn)
+        FOR ALL ENTRIES IN @it_vbak_vbap
+        WHERE vbeln = @it_vbak_vbap-vbeln.
+
+***      SELECT banfn, bnfpo, flief
+***        FROM eban
+***        INTO TABLE @DATA(it_eban)
+***        FOR ALL ENTRIES IN @it_ebkn
+***        WHERE banfn = @it_ebkn-banfn
+***        AND bnfpo   = @it_ebkn-bnfpo
+***        AND flief NE ' '.
+
+      SELECT vbeln, kunnr, parvw
+        FROM vbpa
+        INTO TABLE @DATA(it_vbpa)
+        FOR ALL ENTRIES IN @it_vbak_vbap
+        WHERE vbeln = @it_vbak_vbap-vbeln
+        AND parvw  = 'WE'.
+
+      IF it_vbpa IS NOT INITIAL.
+        SELECT kunnr, name1
+          FROM kna1
+          INTO TABLE @DATA(it_kna1)
+          FOR ALL ENTRIES IN @it_vbpa
+          WHERE kunnr = @it_vbpa-kunnr.
+
+      ENDIF.
+
+      SELECT lk~vbeln, lk~status,
+             ls~posnr, ls~matnr, ls~lgort, ls~werks , ls~wbsta, ls~lfimg, ls~vgbel, ls~vgpos
+        FROM likp AS lk
+        INNER JOIN lips AS ls
+        ON lk~vbeln   = ls~vbeln
+        INTO TABLE @DATA(it_lips1)
+        FOR ALL ENTRIES IN  @it_ekko_ekpo
+        WHERE ls~vgbel = @it_ekko_ekpo-ebeln
+        AND ls~pstyv = 'ELN'
+        AND ls~wbsta NE 'C'
+        AND lk~status IN ( 'SHIPPED' , 'OPEN' ).
+
+      SELECT matnr, zeifo
+        FROM mara
+        INTO TABLE @DATA(it_mara)
+        FOR ALL ENTRIES IN @it_ekko_ekpo
+        WHERE matnr = @it_ekko_ekpo-matnr.
+
+      LOOP AT it_ekko_ekpo INTO DATA(wa_ekpo2).
+        wa_ekpo1-ebeln = wa_ekpo2-ebeln.
+        wa_ekpo1-ebelp = wa_ekpo2-ebelp.
+        CONCATENATE sy-mandt wa_ekpo2-ebeln wa_ekpo2-ebelp INTO wa_ekpo1-tabkey.
+
+        APPEND wa_ekpo1 TO it_ekpo1.
+
+        wa_ekko_vbak-ebeln   = wa_ekpo2-ebeln.
+        wa_ekko_vbak-erdat  = wa_ekpo2-bedat.
+        APPEND wa_ekko_vbak TO it_ekko_vbak.
+
+        CLEAR: wa_ekpo2, wa_ekpo1, wa_ekko_vbak .
+      ENDLOOP.
+
+      SELECT objectid, value_old, fname, tabname, changenr , tabkey
+        FROM cdpos
+        INTO TABLE @DATA(it_cdpos)
+        FOR ALL ENTRIES IN @it_ekpo1
+        WHERE objectid = @it_ekpo1-ebeln
+        AND fname = 'MENGE'
+        AND tabname = 'EKPO'.
+
+      SELECT ebeln, ebelp, wemng
+        FROM eket
+        INTO TABLE @DATA(it_eket)
+        FOR ALL ENTRIES IN @it_ekko_ekpo
+        WHERE ebeln = @it_ekko_ekpo-ebeln.
+
+      IF it_eket IS NOT INITIAL.            "++BY ASHISH ON 27.02.2024
+        SORT it_eket BY ebeln ebelp.
+      ENDIF.
+
+      IF it_ekko_vbak IS NOT INITIAL.
+        SORT it_ekko_vbak ASCENDING BY ebeln.
+        DELETE ADJACENT DUPLICATES FROM it_ekko_vbak COMPARING ebeln erdat.
+
+        SELECT vbeln, bstnk, kunnr
+         FROM vbak
+         INTO TABLE @DATA(it_vbak)
+         FOR ALL ENTRIES IN @it_ekko_vbak
+         WHERE bstnk = @it_ekko_vbak-ebeln
+           AND vkorg IN ( '1000' , '1100' )
+           AND vtweg = '10'
+           AND kvgr1 = 'N05'
+           AND kvgr4 = 'N01' .
+
+      ENDIF.
+
+      IF it_vbak IS NOT INITIAL.
+
+        SELECT vbeln, posnr, werks, kwmeng, matnr, lgort
+          FROM vbap
+          INTO TABLE @DATA(it_vbap)
+          FOR ALL ENTRIES IN @it_vbak
+          WHERE vbeln = @it_vbak-vbeln
+          AND uepos = ' '.
+
+        IF it_vbap IS NOT INITIAL.
+          SORT it_vbap ASCENDING BY vbeln posnr.
+
+          SELECT bstkd_e, posex_e, vbeln, posnr
+           FROM vbkd
+           INTO TABLE @DATA(it_vbkd)
+           FOR ALL ENTRIES IN @it_vbap
+           WHERE vbeln = @it_vbap-vbeln
+           AND posnr = @it_vbap-posnr.
+
+          IF it_vbkd IS NOT INITIAL.
+            DELETE it_vbkd WHERE posex_e IS INITIAL AND posnr IS INITIAL.
+
+            LOOP AT it_vbkd INTO DATA(wa_vkd).
+              CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+                EXPORTING
+                  input  = wa_vkd-posex_e
+                IMPORTING
+                  output = wa_vkd-posex_e.
+
+****          wa_vkd-posex_e  = wa_vkd-posex_e+1(5).
+              MODIFY it_vbkd FROM wa_vkd TRANSPORTING posex_e.
+              CLEAR: wa_vkd.
+            ENDLOOP.
+
+          ENDIF.
+
+
+          SELECT vbeln, posnr, aubel, aupos, fkimg, fkart_ana, vf_status_ana
+            FROM vbrp
+            INTO TABLE @DATA(it_vbrp)
+            FOR ALL ENTRIES IN @it_vbap
+            WHERE aubel = @it_vbap-vbeln
+            AND fkart_ana = 'ZEXP'
+            AND vf_status_ana IN ( 'A' ,  'B' ).
+
+          SELECT vbeln, posnr, wmeng, lifsp, etenr
+            FROM vbep
+            INTO TABLE @DATA(it_vbep)
+             FOR ALL ENTRIES IN @it_vbap
+             WHERE vbeln = @it_vbap-vbeln.
+        ENDIF.
+
+
+      ENDIF.
+
+
+    ENDIF.                              "++ on 07.01.2023
+  ENDIF.         "it_vbak_vbap          ""++ on 07.01.2023
+
+***      IF it_ekko_vbak IS NOT INITIAL.
+*---------------SOA on 31.12.2023  if PO ref is not there then selecting all vbeln
+  SELECT vk1~vbeln, vk1~bstnk, vk1~erdat,
+         vp1~posnr, vp1~uepos, vp1~matnr, vp1~werks, vp1~kwmeng, vp1~lgort
+    FROM vbak AS vk1
+    INNER JOIN vbap AS vp1
+    ON vk1~vbeln = vp1~vbeln
+     WHERE vk1~erdat IN @s_erdat
+           AND vk1~vkorg IN ( '1000' , '1100' )
+           AND vk1~vtweg = '10'
+           AND vk1~kvgr1 = 'N05'
+           AND vk1~kvgr4 = 'N01'
+           AND vp1~uepos = ' '
+    INTO TABLE @DATA(it_vbak_vbap_po).
+
+
+
+  IF it_vbak_vbap_po IS NOT INITIAL.
+
+    SORT it_vbak_vbap_po ASCENDING BY bstnk." vbeln posnr.
+
+    SELECT bstkd_e, posex_e, vbeln, posnr
+      FROM vbkd
+      INTO TABLE @DATA(it_vbkd_po)
+       FOR ALL ENTRIES IN @it_vbak_vbap_po
+         WHERE vbeln = @it_vbak_vbap_po-vbeln
+         AND posnr = @it_vbak_vbap_po-posnr.
+
+    IF it_vbkd_po IS NOT INITIAL.
+      DELETE it_vbkd_po WHERE posex_e IS INITIAL." AND posnr IS INITIAL.
+
+      LOOP AT it_vbkd_po INTO DATA(wa_vkd_po).
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+          EXPORTING
+            input  = wa_vkd_po-posex_e
+          IMPORTING
+            output = wa_vkd_po-posex_e.
+
+        MODIFY it_vbkd_po FROM wa_vkd_po TRANSPORTING posex_e.
+        CLEAR: wa_vkd_po.
+      ENDLOOP.
+
+    ENDIF.
+
+
+    SELECT vbeln, posnr, aubel, aupos, fkimg, fkart_ana, vf_status_ana
+      FROM vbrp
+      INTO TABLE @DATA(it_vbrp_po)
+      FOR ALL ENTRIES IN @it_vbak_vbap_po
+      WHERE aubel = @it_vbak_vbap_po-vbeln
+      AND fkart_ana = 'ZEXP'
+      AND vf_status_ana IN ( 'A' ,  'B' ).
+
+
+    SELECT vbeln, posnr, wmeng, lifsp, etenr
+       FROM vbep
+       INTO TABLE @DATA(it_vbep_po)
+        FOR ALL ENTRIES IN @it_vbak_vbap_po
+        WHERE vbeln = @it_vbak_vbap_po-vbeln.
+
+    SELECT vbeln, kunnr, parvw
+      FROM vbpa
+      INTO TABLE @DATA(it_vbpa_po)
+      FOR ALL ENTRIES IN @it_vbak_vbap_po
+       WHERE vbeln = @it_vbak_vbap_po-vbeln
+       AND parvw  = 'WE'.
+
+    IF it_vbpa_po IS NOT INITIAL.
+      SELECT kunnr, name1
+        FROM kna1
+        INTO TABLE @DATA(it_kna1_po)
+        FOR ALL ENTRIES IN @it_vbpa_po
+        WHERE kunnr = @it_vbpa_po-kunnr.
+    ENDIF.
+
+*-------------------------------------------------SOA on 05.01.2024----------------------------------
+
+
+    MOVE-CORRESPONDING it_vbak_vbap_po TO it_ekpo_vbak.
+    SORT it_ekpo_vbak ASCENDING BY bstnk.
+    DELETE ADJACENT DUPLICATES FROM it_ekpo_vbak COMPARING bstnk.
+
+    SELECT ek~ebeln, ek~lifnr, ek~zzoeaf, ek~bedat,
+        ep~ebelp, ep~matnr, ep~werks, ep~lgort, ep~menge, ep~ntgew
+        FROM ekko AS ek
+        INNER JOIN ekpo AS ep
+        ON ek~ebeln = ep~ebeln
+        FOR ALL ENTRIES IN @it_ekpo_vbak                   " ------------------------------------------
+        WHERE ek~ebeln = @it_ekpo_vbak-bstnk
+***         AND ek~lifnr   IN @s_lifnr
+***         AND ek~bedat   IN @s_bedat
+        AND ek~bukrs   = '3000'
+        AND ep~loekz   NE 'X'
+        INTO TABLE @DATA(it_ekko_ekpo_po).
+
+    IF it_ekko_ekpo_po IS NOT INITIAL.
+      SELECT matnr, zeifo
+       FROM mara
+       INTO TABLE @DATA(it_mara_po)
+       FOR ALL ENTRIES IN @it_ekko_ekpo_po
+       WHERE matnr = @it_ekko_ekpo_po-matnr.
+
+      SELECT matnr, maktx, spras
+       FROM makt
+       INTO TABLE @DATA(it_makt_po)
+       FOR ALL ENTRIES IN @it_ekko_ekpo_po
+       WHERE matnr = @it_ekko_ekpo_po-matnr
+       AND spras = 'E'.
+
+
+      LOOP AT it_ekko_ekpo_po INTO DATA(wa_ekpo2_po).
+        wa_ekpo1_po-ebeln = wa_ekpo2_po-ebeln.
+        wa_ekpo1_po-ebelp = wa_ekpo2_po-ebelp.
+        CONCATENATE sy-mandt wa_ekpo2_po-ebeln wa_ekpo2_po-ebelp INTO wa_ekpo1_po-tabkey.
+
+        APPEND wa_ekpo1_po TO it_ekpo1_po.
+
+***      wa_ekko_vbak-ebeln   = wa_ekpo2-ebeln.
+***      wa_ekko_vbak-erdat  = wa_ekpo2-bedat.
+***      APPEND wa_ekko_vbak TO it_ekko_vbak.
+
+        CLEAR: wa_ekpo2_po, wa_ekpo1_po.", wa_ekko_vbak .
+      ENDLOOP.
+
+      SELECT objectid, value_old, fname, tabname, changenr , tabkey
+        FROM cdpos
+        INTO TABLE @DATA(it_cdpos_po)
+        FOR ALL ENTRIES IN @it_ekpo1_po
+        WHERE objectid = @it_ekpo1_po-ebeln
+        AND fname = 'MENGE'
+        AND tabname = 'EKPO'.
+
+      SELECT ebeln, ebelp, wemng
+         FROM eket
+         INTO TABLE @DATA(it_eket_po)
+         FOR ALL ENTRIES IN @it_ekko_ekpo_po
+         WHERE ebeln = @it_ekko_ekpo_po-ebeln.
+
+      IF it_eket_po IS NOT INITIAL.   "++BY ASHISH ON 27.02.2024
+        SORT it_eket_po BY ebeln ebelp.
+      ENDIF.
+
+      SELECT lk~vbeln, lk~status,
+              ls~posnr, ls~matnr, ls~lgort, ls~werks , ls~wbsta, ls~lfimg, ls~vgbel, ls~vgpos
+           FROM likp AS lk
+           INNER JOIN lips AS ls
+           ON lk~vbeln   = ls~vbeln
+           INTO TABLE @DATA(it_lips1_po)
+           FOR ALL ENTRIES IN  @it_ekko_ekpo_po
+           WHERE ls~vgbel = @it_ekko_ekpo_po-ebeln
+           AND ls~pstyv = 'ELN'
+           AND ls~wbsta NE 'C'
+           AND lk~status IN ( 'SHIPPED' , 'OPEN' ).
+
+      SELECT ebeln, ebelp, vbeln, vbelp                           "getting yohta so vbeln
+        FROM ekkn
+        INTO TABLE @DATA(it_ekkn_po1)
+         FOR ALL ENTRIES IN @it_ekko_ekpo_po
+        WHERE ebeln  = @it_ekko_ekpo_po-ebeln
+        AND ebelp   = @it_ekko_ekpo_po-ebelp.
+
+      IF it_ekkn_po1 IS NOT INITIAL.
+        SELECT vbeln, kunnr, vdatu
+          FROM vbak
+          INTO TABLE @DATA(it_vbak_po)
+          FOR ALL ENTRIES IN @it_ekkn_po1
+          WHERE vbeln = @it_ekkn_po1-vbeln.
+
+        IF it_vbak_po IS NOT INITIAL.
+          SELECT kunnr, name1
+            FROM kna1
+            INTO TABLE @DATA(it_kna1_po_n)
+            FOR ALL ENTRIES IN @it_vbak_po
+            WHERE kunnr = @it_vbak_po-kunnr.
+        ENDIF.
+      ENDIF.
+
+      SELECT banfn , bnfpo, vbeln, vbelp, menge
+        FROM ebkn
+        INTO TABLE @DATA(it_ebkn_po1)
+        FOR ALL ENTRIES IN @it_ekkn_po1
+        WHERE vbeln = @it_ekkn_po1-vbeln
+        AND vbelp  = @it_ekkn_po1-vbelp.
+
+
+    ENDIF.  "it_ekko_ekpo_po
+
+*-------------------------------------------------EOA on 05.01.2024
+  ENDIF.    "it_vbak_vbap_po endif
+
+
+
+*---------------EOA on 31.12.2023------------------------------------------------------------------------------
+***      ENDIF.
+
+***
+***    ENDIF.
+***  ENDIF.         "it_vbak_vbap
+
+
+
+  LOOP AT it_vbak_vbap INTO DATA(lwa_vbak_vbap).
+
+    READ TABLE it_mbew INTO DATA(wa_mbew) WITH KEY matnr   = lwa_vbak_vbap-matnr.
+    IF sy-subrc = 0.
+
+      wa_final-yohta_so           = lwa_vbak_vbap-vbeln.
+      wa_final-yohta_so_item      = lwa_vbak_vbap-posnr.
+      wa_final-yohta_so_qty       = lwa_vbak_vbap-kwmeng.
+      wa_final-kunnr              = lwa_vbak_vbap-kunnr.
+      wa_final-matnr              = lwa_vbak_vbap-matnr.
+      wa_final-cust_deldate       = lwa_vbak_vbap-vdatu.
+
+      CLEAR:  lv_text_name , wa_text2.
+      REFRESH: it_text2.
+
+      lv_text_name =  lwa_vbak_vbap-vbeln.
+
+      IF lv_text_name IS NOT INITIAL.
+
+        CALL FUNCTION 'READ_TEXT'
+          EXPORTING
+            client                  = sy-mandt
+            id                      = '0012'
+            language                = sy-langu
+            name                    = lv_text_name
+            object                  = 'VBBK'
+          TABLES
+            lines                   = it_text2
+          EXCEPTIONS
+            id                      = 1
+            language                = 2
+            name                    = 3
+            not_found               = 4
+            object                  = 5
+            reference_check         = 6
+            wrong_access_to_archive = 7
+            OTHERS                  = 8.
+
+        IF sy-subrc <> 0.
+* Implement suitable error handling here
+        ENDIF. " IF sy-subrc <> 0
+
+        IF it_text2[] IS NOT INITIAL.
+          READ TABLE it_text2 INTO wa_text2 INDEX 1.
+          IF sy-subrc EQ 0.
+            wa_final-del_insts   = wa_text2-tdline.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+      READ TABLE it_kna2 INTO DATA(wa_kna2) WITH KEY kunnr  = lwa_vbak_vbap-kunnr.
+      IF sy-subrc  = 0.
+        wa_final-cust_name    = wa_kna2-name1.
+      ENDIF.
+
+      READ TABLE it_ebkn INTO DATA(wa_ebkn) WITH KEY vbeln = lwa_vbak_vbap-vbeln
+                                                     vbelp = lwa_vbak_vbap-posnr.
+      IF sy-subrc = 0.
+        wa_final-pur_req  = wa_ebkn-banfn.
+        wa_final-pur_itm  = wa_ebkn-bnfpo.
+        wa_final-pur_qty  = wa_ebkn-menge.
+
+      ENDIF.
+
+      READ TABLE it_vbpa INTO DATA(wa_vbpa) WITH KEY vbeln  = lwa_vbak_vbap-vbeln
+                                                         parvw  = 'WE'.
+      IF sy-subrc = 0.
+        wa_final-kunnr_we    = wa_vbpa-kunnr.
+
+        READ TABLE it_kna1 INTO DATA(wa_kna1) WITH KEY kunnr  = wa_vbpa-kunnr.
+        IF sy-subrc  = 0.
+          wa_final-name1    = wa_kna1-name1.
+        ENDIF.
+      ENDIF.
+
+      READ TABLE it_makt INTO DATA(wa_makt1) WITH KEY matnr = lwa_vbak_vbap-matnr
+                                                      spras = 'E'.
+      IF sy-subrc = 0.
+        wa_final-maktx       = wa_makt1-maktx.
+      ENDIF.
+
+      READ TABLE it_ekkn INTO DATA(wa_ekkn) WITH KEY vbeln = lwa_vbak_vbap-vbeln
+                                                     vbelp = lwa_vbak_vbap-posnr.
+      IF sy-subrc = 0.
+
+        READ TABLE it_ekko_ekpo INTO DATA(lwa_ekko_ekpo) WITH KEY ebeln = wa_ekkn-ebeln
+                                                                  ebelp = wa_ekkn-ebelp.
+        IF sy-subrc = 0.
+
+          wa_final-lifnr           = lwa_ekko_ekpo-lifnr    .
+          wa_final-ebeln           = lwa_ekko_ekpo-ebeln    .
+          wa_final-ebelp           = lwa_ekko_ekpo-ebelp    .
+          wa_final-bedat           = lwa_ekko_ekpo-bedat    .
+          wa_final-zzoeaf          = lwa_ekko_ekpo-zzoeaf   .
+          wa_final-werks           = lwa_ekko_ekpo-werks    .
+          wa_final-lgort           = lwa_ekko_ekpo-lgort    .
+          wa_final-current_po_qty  = lwa_ekko_ekpo-menge    .
+
+          READ TABLE it_mara INTO DATA(wa_mara) WITH KEY matnr  = lwa_ekko_ekpo-matnr.
+          IF sy-subrc = 0.
+
+            IF wa_mara-zeifo GT 0.
+              wa_final-container_fill      = wa_final-current_po_qty * 100 / wa_mara-zeifo.
+            ENDIF.
+
+          ENDIF.
+
+
+          READ TABLE it_ekpo1 INTO DATA(wa_ekpo12) WITH KEY ebeln = lwa_ekko_ekpo-ebeln
+                                                            ebelp = lwa_ekko_ekpo-ebelp.
+          IF sy-subrc = 0.
+            SORT it_cdpos ASCENDING BY objectid tabkey changenr.
+            READ TABLE it_cdpos INTO DATA(wa_cdpos) WITH KEY objectid = wa_ekpo12-ebeln
+                                                             tabkey = wa_ekpo12-tabkey
+                                                             fname = 'MENGE' tabname = 'EKPO' .
+            IF sy-subrc = 0.
+              wa_final-menge = wa_cdpos-value_old.           "ORIGINAL QUANTITY
+            ENDIF.
+          ENDIF.
+
+          IF wa_final-menge IS INITIAL.
+            wa_final-menge   = lwa_ekko_ekpo-menge    .
+          ENDIF.
+
+*--------------------------------SOA BY ASHISH ON 27.02.2024
+*          READ TABLE it_eket INTO DATA(wa_eket) WITH KEY ebeln = lwa_ekko_ekpo-ebeln
+*                                                         ebelp = lwa_ekko_ekpo-ebelp.
+*          IF sy-subrc = 0.
+*            wa_final-grn_qty       = wa_eket-wemng.
+*          ENDIF.
+
+          READ TABLE it_eket INTO DATA(wa_eket2) WITH KEY ebeln = lwa_ekko_ekpo-ebeln
+                                                              ebelp = lwa_ekko_ekpo-ebelp BINARY SEARCH .
+          IF sy-subrc = 0.
+            LOOP AT it_eket INTO DATA(wa_eket) FROM sy-tabix.
+              IF ( wa_eket2-ebeln NE wa_eket-ebeln ) OR
+               ( wa_eket2-ebelp NE wa_eket-ebelp ) .
+                EXIT.
+              ENDIF.
+              lv_eket_wemng      = lv_eket_wemng + wa_eket-wemng.
+
+              CLEAR: wa_eket.
+            ENDLOOP.
+          ENDIF.
+
+          wa_final-grn_qty   = lv_eket_wemng.
+          CLEAR: lv_eket_wemng.
+*------------------------------EOA BY ASHISH ON 27.02.2024
+
+          LOOP AT it_lips1 INTO DATA(wa_lips1) WHERE vgbel = lwa_ekko_ekpo-ebeln
+                                                 AND vgpos = lwa_ekko_ekpo-ebelp.
+            IF wa_lips1-status  = 'SHIPPED'.
+              lv_tot = lv_tot + wa_lips1-lfimg.
+            ELSEIF wa_lips1-status  = 'OPEN'.
+              lv_tot1 = lv_tot1 + wa_lips1-lfimg.
+            ENDIF.
+
+            CLEAR: wa_lips1.
+          ENDLOOP.
+
+          wa_final-lfimg1 = lv_tot.
+          wa_final-lfimg2  = lv_tot1.
+
+
+          wa_final-remaining_qty    = wa_final-current_po_qty  - wa_final-grn_qty  - ( wa_final-lfimg1 + wa_final-lfimg2 ).
+          wa_final-tons             = wa_final-remaining_qty  * lwa_ekko_ekpo-ntgew / 100.
+
+          CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+            EXPORTING
+              input  = lwa_ekko_ekpo-ebelp
+            IMPORTING
+              output = lwa_ekko_ekpo-ebelp.
+
+
+          READ TABLE it_vbkd INTO DATA(wa_vbkd2) WITH KEY bstkd_e  = lwa_ekko_ekpo-ebeln
+                                                          posex_e  = lwa_ekko_ekpo-ebelp.
+          IF sy-subrc = 0.
+
+            LOOP AT it_vbkd INTO DATA(wa_vbkd) WHERE bstkd_e  = lwa_ekko_ekpo-ebeln
+                                               AND   posex_e  = lwa_ekko_ekpo-ebelp.
+
+
+              READ TABLE it_vbap INTO DATA(wa_vbap) WITH KEY vbeln  = wa_vbkd-vbeln
+                                                             posnr  = wa_vbkd-posnr.
+              IF sy-subrc = 0.
+
+                READ TABLE it_vbak INTO DATA(wa_vbak) WITH KEY vbeln  = wa_vbkd-vbeln.
+                IF sy-subrc = 0.
+                  wa_final-bstnk     = wa_vbak-bstnk.
+
+                ENDIF.
+
+                wa_final-vbeln         = wa_vbak-vbeln.
+                wa_final-posnr         = wa_vbap-posnr.
+                wa_final-kwmeng        = wa_vbap-kwmeng.
+                wa_final-atc_plant     = wa_vbap-werks.
+
+                LOOP AT  it_vbrp INTO DATA(wa_vbrp) WHERE aubel = wa_vbap-vbeln
+                                                      AND aupos = wa_vbap-posnr.
+
+                  lv_shipped_qty    = lv_shipped_qty + wa_vbrp-fkimg.
+                  CLEAR: wa_vbrp.
+                ENDLOOP.
+
+                wa_final-shipped_qty   = lv_shipped_qty.
+
+                CLEAR: lv_shipped_qty.
+
+*                wa_final-balance_qty    = ( wa_final-kwmeng  - wa_final-shipped_qty ) - wa_final-delete_qty.        "order qty - shipped qty - del qty
+**               ---------------------------------------------------------- " wa_final-delete_qty. ++28.02.2024.
+*                wa_final-difference_qty = wa_final-remaining_qty - wa_final-balance_qty .
+
+
+                LOOP AT it_vbep INTO DATA(wa_vbep) WHERE vbeln = wa_vbap-vbeln
+                                             AND posnr = wa_vbap-posnr.
+
+                  CASE wa_vbep-lifsp.
+                    WHEN '55'.
+                      lv_delete_qty  = lv_delete_qty + wa_vbep-wmeng.
+
+                    WHEN '53' OR '54'  OR '56' OR '57' OR '58' OR '59' OR ' '.
+                      lv_promise_qty   = lv_promise_qty + wa_vbep-wmeng.
+
+                  ENDCASE.
+
+                  CLEAR: wa_vbep.
+                ENDLOOP.
+
+                wa_final-delete_qty   = lv_delete_qty .
+                wa_final-promise_qty  = lv_promise_qty .
+
+                wa_final-balance_qty    = ( wa_final-kwmeng  - wa_final-shipped_qty ) - wa_final-delete_qty.        "order qty - shipped qty - del qty
+*               ---------------------------------------------------------- " wa_final-delete_qty. ++28.02.2024.
+                wa_final-difference_qty = wa_final-remaining_qty - wa_final-balance_qty .
+
+
+              ENDIF.
+
+              IF wa_final-vbeln IS INITIAL.
+                wa_final-remarks  = 'Order Not Booked / Cancelled'.
+              ENDIF.
+
+              IF wa_final-ebeln IS INITIAL.
+                wa_final-remarks  = 'YOHTA SO/PO not present in YOHTA SAP'.
+              ENDIF.
+
+              IF wa_final-remarks IS INITIAL.
+                IF  wa_final-current_po_qty > wa_final-kwmeng   .
+                  wa_final-remarks    = 'Short Qty in ATC SO'.
+
+                ELSEIF wa_final-current_po_qty  < wa_final-kwmeng .
+                  wa_final-remarks  = 'Excess Qty in ATC SO'.
+
+                ELSEIF wa_final-current_po_qty = wa_final-kwmeng   .
+                  wa_final-remarks  = 'OK'.
+                ENDIF.
+              ENDIF.
+
+
+              APPEND wa_final TO it_final.
+
+
+              CLEAR: wa_vbkd, lv_tot, lv_tot1, lv_tot3, lv_delete_qty, lv_promise_qty .
+              CLEAR: wa_final-bstnk         ,
+                     wa_final-kunnr_we      ,
+                     wa_final-name1         ,
+                     wa_final-vbeln         ,
+                     wa_final-posnr         ,
+                     wa_final-kwmeng        ,
+                     wa_final-atc_plant     ,
+                     wa_final-shipped_qty   ,
+                     wa_final-balance_qty   ,
+                     wa_final-difference_qty,
+                     wa_final-delete_qty    ,
+                     wa_final-remarks       ,
+                     wa_final-promise_qty   .
+            ENDLOOP.
+          ENDIF.
+
+        ELSE.
+
+
+          IF wa_final-vbeln IS INITIAL.
+            wa_final-remarks  = 'Order Not Booked / Cancelled'.
+          ENDIF.
+
+          IF wa_final-ebeln IS INITIAL OR wa_final-yohta_so IS INITIAL.
+            wa_final-remarks  = 'YOHTA SO/PO not present in YOHTA SAP'.
+          ENDIF.
+
+          APPEND wa_final TO it_final.
+
+
+***        ENDIF.       "wa_zya_mmt_plan_ven-lifnr check
+        ENDIF.     "it_ekko_ekpo sy-subrc = 0
+
+      ELSE.
+
+        IF wa_final-vbeln IS INITIAL.
+          wa_final-remarks  = 'Order Not Booked / Cancelled'.
+        ENDIF.
+
+        IF wa_final-ebeln IS INITIAL OR wa_final-remarks IS INITIAL.
+          wa_final-remarks  = 'YOHTA SO/PO not present in YOHTA SAP'.
+        ENDIF.
+
+        APPEND wa_final TO it_final.
+
+
+      ENDIF.
+
+    ENDIF.   "material check in mbew
+
+    CLEAR: wa_final, lwa_ekko_ekpo , lv_tot, lv_tot1, lv_tot3, lv_lifnr, lwa_vbak_vbap.
+  ENDLOOP.
+
+
+* *-----------------------------------SOA for Reverse Logic Getting PO from ATC SO---------------------------------------------------------------------
+*-----------------------------------CODE FOR SO WITH NO PO REFERENCE---------------------------------------------------------------------
+  CLEAR: lv_delete_qty2, lv_promise_qty2, lv_shipped_qty2.
+
+  LOOP AT it_vbak_vbap_po INTO DATA(wa_vbap_po).                 "loop for vbeln with no PO reference
+
+***    READ TABLE it_final INTO DATA(wa_final4) WITH KEY ebeln = wa_vbap_po-bstnk.
+***    IF sy-subrc NE 0.
+    READ TABLE it_final INTO DATA(wa_final3_po) WITH KEY vbeln = wa_vbap_po-vbeln
+                                                         posnr = wa_vbap_po-posnr.
+    IF sy-subrc NE 0.
+
+
+      READ TABLE it_vbkd_po INTO DATA(wa_vbkd_po5) WITH KEY vbeln  = wa_vbap_po-vbeln
+                                                             posnr  = wa_vbap_po-posnr.
+      IF sy-subrc = 0.
+        READ TABLE it_ekko_ekpo_po INTO DATA(wa_ekko_ekpo_po) WITH KEY ebeln = wa_vbkd_po5-bstkd_e
+                                                                       ebelp = wa_vbkd_po5-posex_e .
+        IF sy-subrc = 0.
+          wa_final-ebeln           = wa_ekko_ekpo_po-ebeln.
+          wa_final-ebelp           = wa_ekko_ekpo_po-ebelp.
+          wa_final-lifnr           = wa_ekko_ekpo_po-lifnr    .
+          wa_final-ebeln           = wa_ekko_ekpo_po-ebeln    .
+          wa_final-ebelp           = wa_ekko_ekpo_po-ebelp    .
+          wa_final-bedat           = wa_ekko_ekpo_po-bedat    .
+          wa_final-zzoeaf          = wa_ekko_ekpo_po-zzoeaf   .
+          wa_final-werks           = wa_ekko_ekpo_po-werks    .
+          wa_final-matnr           = wa_ekko_ekpo_po-matnr    .
+          wa_final-lgort           = wa_ekko_ekpo_po-lgort    .
+          wa_final-current_po_qty  = wa_ekko_ekpo_po-menge    .
+
+          READ TABLE it_mara_po INTO DATA(wa_mara_po) WITH KEY matnr  = wa_ekko_ekpo_po-matnr.
+          IF sy-subrc = 0.
+            IF wa_mara_po-zeifo GT 0.
+              wa_final-container_fill      = wa_final-current_po_qty * 100 / wa_mara_po-zeifo.
+            ENDIF.
+          ENDIF.
+
+          READ TABLE it_makt_po INTO DATA(wa_makt_po) WITH KEY matnr = wa_ekko_ekpo_po-matnr
+                                                     spras = 'E'.
+          IF sy-subrc = 0.
+            wa_final-maktx       = wa_makt_po-maktx.
+          ENDIF.
+
+
+          READ TABLE it_ekpo1_po INTO DATA(wa_ekpo12_po) WITH KEY ebeln = wa_ekko_ekpo_po-ebeln
+                                                           ebelp = wa_ekko_ekpo_po-ebelp.
+          IF sy-subrc = 0.
+            SORT it_cdpos_po ASCENDING BY objectid tabkey changenr.
+            READ TABLE it_cdpos_po INTO DATA(wa_cdpos_po) WITH KEY objectid = wa_ekpo12_po-ebeln
+                                                             tabkey = wa_ekpo12_po-tabkey
+                                                             fname = 'MENGE' tabname = 'EKPO' .
+            IF sy-subrc = 0.
+              wa_final-menge = wa_cdpos_po-value_old.           "ORIGINAL QUANTITY
+            ENDIF.
+          ENDIF.
+
+          IF wa_final-menge IS INITIAL.
+            wa_final-menge   = wa_ekko_ekpo_po-menge    .
+          ENDIF.
+
+
+*-------------------------SOA BY ASHISH ON 27.02.2024
+*          READ TABLE it_eket_po INTO DATA(wa_eket_po) WITH KEY ebeln = wa_ekko_ekpo_po-ebeln
+*                                                         ebelp = wa_ekko_ekpo_po-ebelp.
+*          IF sy-subrc = 0.
+*            wa_final-grn_qty       = wa_eket_po-wemng.
+*          ENDIF.
+
+          READ TABLE it_eket_po INTO DATA(wa_eket_po2) WITH KEY ebeln = wa_ekko_ekpo_po-ebeln
+                                                               ebelp = wa_ekko_ekpo_po-ebelp BINARY SEARCH.
+          IF sy-subrc = 0.
+            LOOP AT it_eket_po INTO DATA(wa_eket_po) FROM sy-tabix.
+              IF ( wa_eket_po2-ebeln NE wa_eket_po-ebeln ) OR
+               ( wa_eket_po2-ebelp NE wa_eket_po-ebelp ) .
+                EXIT.
+              ENDIF.
+              lv_eket_wemng2      = lv_eket_wemng2 + wa_eket_po-wemng.
+
+              CLEAR: wa_eket_po.
+            ENDLOOP.
+          ENDIF.
+
+          wa_final-grn_qty   = lv_eket_wemng2.
+          CLEAR: lv_eket_wemng2.
+*------------------------------EOA BY ASHISH ON 27.02.2024
+
+
+          READ TABLE it_ekkn_po1 INTO DATA(wa_ekkn_po1) WITH KEY ebeln = wa_ekko_ekpo_po-ebeln
+                                                         ebelp = wa_ekko_ekpo_po-ebelp.
+          IF sy-subrc = 0.
+            wa_final-yohta_so   = wa_ekkn_po1-vbeln.
+            wa_final-yohta_so_item   = wa_ekkn_po1-vbelp.
+
+            READ TABLE it_vbak_po INTO DATA(wa_vbak_po) WITH KEY vbeln = wa_ekkn_po1-vbeln.
+            IF sy-subrc = 0.
+              wa_final-kunnr  = wa_vbak_po-kunnr.
+              wa_final-cust_deldate    = wa_vbak_po-vdatu.
+
+              READ TABLE it_kna1_po_n INTO DATA(wa_kna6) WITH KEY kunnr = wa_vbak_po-kunnr.
+              IF sy-subrc = 0.
+                wa_final-cust_name   = wa_kna6-name1.
+              ENDIF.
+
+
+              CLEAR: lv_text_name, wa_text2.
+              REFRESH: it_text2.
+
+              lv_text_name = wa_vbak_po-vbeln.
+
+              IF lv_text_name IS NOT INITIAL.
+
+                CALL FUNCTION 'READ_TEXT'
+                  EXPORTING
+                    client                  = sy-mandt
+                    id                      = '0012'
+                    language                = sy-langu
+                    name                    = lv_text_name
+                    object                  = 'VBBK'
+                  TABLES
+                    lines                   = it_text2
+                  EXCEPTIONS
+                    id                      = 1
+                    language                = 2
+                    name                    = 3
+                    not_found               = 4
+                    object                  = 5
+                    reference_check         = 6
+                    wrong_access_to_archive = 7
+                    OTHERS                  = 8.
+
+                IF sy-subrc <> 0.
+* Implement suitable error handling here
+                ENDIF. " IF sy-subrc <> 0
+
+                IF it_text2[] IS NOT INITIAL.
+                  READ TABLE it_text2 INTO wa_text2 INDEX 1.
+                  IF sy-subrc EQ 0.
+                    wa_final-del_insts   = wa_text2-tdline.
+                  ENDIF.
+                ENDIF.
+              ENDIF.
+
+            ENDIF.   "it_vbak_po
+
+            READ TABLE it_ebkn_po1 INTO DATA(wa_ebkn_po1) WITH KEY vbeln = wa_ekkn_po1-vbeln
+                                                                   vbelp = wa_ekkn_po1-vbelp.
+            IF sy-subrc = 0.
+              wa_final-pur_req    = wa_ebkn_po1-banfn.
+              wa_final-pur_itm    = wa_ebkn_po1-bnfpo.
+              wa_final-pur_qty    = wa_ebkn_po1-menge.
+            ENDIF.
+          ENDIF.      "it_ekkn_po1
+
+
+
+          CLEAR: lv_tot, lv_tot1.
+
+          LOOP AT it_lips1_po INTO DATA(wa_lips1_po) WHERE vgbel = wa_ekko_ekpo_po-ebeln
+                                                        AND vgpos = wa_ekko_ekpo_po-ebelp.
+            IF wa_lips1_po-status  = 'SHIPPED'.
+              lv_tot = lv_tot + wa_lips1_po-lfimg.
+            ELSEIF wa_lips1_po-status  = 'OPEN'.
+              lv_tot1 = lv_tot1 + wa_lips1_po-lfimg.
+            ENDIF.
+
+            CLEAR: wa_lips1_po.
+          ENDLOOP.
+
+          wa_final-lfimg1 = lv_tot.
+          wa_final-lfimg2  = lv_tot1.
+
+
+          wa_final-remaining_qty    = wa_final-current_po_qty  - wa_final-grn_qty  - ( wa_final-lfimg1 + wa_final-lfimg2 ).
+          wa_final-tons             = wa_final-remaining_qty  * wa_ekko_ekpo_po-ntgew / 100.
+
+
+        ENDIF.
+      ENDIF.       "it_vbkd_po
+
+
+
+
+      wa_final-bstnk     = wa_vbap_po-bstnk.
+
+      READ TABLE it_vbpa_po INTO DATA(wa_vbpa2_po) WITH KEY vbeln  = wa_vbap_po-vbeln
+                                                          parvw  = 'WE'.
+      IF sy-subrc = 0.
+        wa_final-kunnr_we    = wa_vbpa2_po-kunnr.
+
+        READ TABLE it_kna1_po INTO DATA(wa_kna3_po) WITH KEY kunnr  = wa_vbpa2_po-kunnr.
+        IF sy-subrc  = 0.
+          wa_final-name1    = wa_kna3_po-name1.
+        ENDIF.
+      ENDIF.
+
+      wa_final-vbeln         = wa_vbap_po-vbeln.
+      wa_final-posnr         = wa_vbap_po-posnr.
+      wa_final-kwmeng        = wa_vbap_po-kwmeng.
+      wa_final-atc_plant     = wa_vbap_po-werks.
+
+
+      LOOP AT it_vbrp_po INTO DATA(wa_vbrp2_po) WHERE aubel = wa_vbap_po-vbeln
+                                                 AND aupos = wa_vbap_po-posnr.
+
+        lv_shipped_qty2    = lv_shipped_qty2 + wa_vbrp2_po-fkimg.
+        CLEAR: wa_vbrp2_po.
+      ENDLOOP.
+
+      wa_final-shipped_qty   = lv_shipped_qty2.
+
+      CLEAR: lv_shipped_qty2.
+
+*      wa_final-balance_qty    = ( wa_final-kwmeng  - wa_final-shipped_qty ) - wa_final-delete_qty.        "order qty - shipped qty - del qty
+**     -------------------------------------------------------- " wa_final-delete_qty. ++28.02.2024
+*      wa_final-difference_qty = wa_final-remaining_qty - wa_final-balance_qty .
+
+      LOOP AT it_vbep_po INTO DATA(wa_vbep2_po) WHERE vbeln = wa_vbap_po-vbeln
+                                               AND posnr = wa_vbap_po-posnr.
+
+        CASE wa_vbep2_po-lifsp.
+          WHEN '55'.
+            lv_delete_qty2  = lv_delete_qty2 + wa_vbep2_po-wmeng.
+
+          WHEN '53' OR '54'  OR '56' OR '57' OR '58' OR '59' OR ' '.
+            lv_promise_qty2  = lv_promise_qty2 + wa_vbep2_po-wmeng.
+
+        ENDCASE.
+
+        CLEAR: wa_vbep2_po.
+      ENDLOOP.
+
+      wa_final-delete_qty  = lv_delete_qty2 .
+      wa_final-promise_qty  = lv_promise_qty2 .
+
+      wa_final-balance_qty    = ( wa_final-kwmeng  - wa_final-shipped_qty ) - wa_final-delete_qty.        "order qty - shipped qty - del qty
+*     -------------------------------------------------------- " wa_final-delete_qty. ++28.02.2024
+      wa_final-difference_qty = wa_final-remaining_qty - wa_final-balance_qty .
+
+
+      IF wa_final-vbeln IS INITIAL.
+        wa_final-remarks  = 'Order Not Booked / Cancelled'.
+      ENDIF.
+
+      IF wa_final-ebeln IS INITIAL OR wa_final-yohta_so IS INITIAL.
+        wa_final-remarks  = 'YOHTA SO/PO not present in YOHTA SAP'.
+      ENDIF.
+
+      IF wa_final-remarks IS INITIAL.
+        IF  wa_final-current_po_qty > wa_final-kwmeng   .
+          wa_final-remarks    = 'Short Qty in ATC SO'.
+
+        ELSEIF wa_final-current_po_qty  < wa_final-kwmeng .
+          wa_final-remarks  = 'Excess Qty in ATC SO'.
+
+        ELSEIF wa_final-current_po_qty = wa_final-kwmeng   .
+          wa_final-remarks  = 'OK'.
+        ENDIF.
+      ENDIF.
+
+
+      APPEND wa_final TO it_final.
+
+*
+    ENDIF.
+***    ENDIF.
+
+    CLEAR: wa_final, wa_vbap_po, lv_delete_qty2, lv_promise_qty2, lv_tot, lv_tot1.
+  ENDLOOP.
+
+
+
+
+
+  CLEAR: lv_delete_qty2, lv_promise_qty2, lv_shipped_qty2.
+
+  LOOP AT it_vbak_vbap_po INTO DATA(wa_vbap_po2).                 "loop for MISSING SO ITEMS with no PO reference
+
+    READ TABLE it_final INTO DATA(wa_final3_po2) WITH KEY vbeln = wa_vbap_po2-vbeln .
+    IF sy-subrc = 0.
+
+      READ TABLE it_final INTO DATA(wa_final22) WITH KEY vbeln = wa_vbap_po2-vbeln  posnr = wa_vbap_po2-posnr.
+      IF sy-subrc NE 0.
+
+        wa_final-bstnk     = wa_vbap_po2-bstnk.
+
+        READ TABLE it_vbpa_po INTO DATA(wa_vbpa2_po2) WITH KEY vbeln  = wa_vbap_po2-vbeln
+                                                               parvw  = 'WE'.
+        IF sy-subrc = 0.
+          wa_final-kunnr_we    = wa_vbpa2_po2-kunnr.
+
+          READ TABLE it_kna1_po INTO DATA(wa_kna3_po2) WITH KEY kunnr  = wa_vbpa2_po2-kunnr.
+          IF sy-subrc  = 0.
+            wa_final-name1    = wa_kna3_po2-name1.
+          ENDIF.
+        ENDIF.
+
+
+        wa_final-vbeln         = wa_vbap_po2-vbeln.
+        wa_final-posnr         = wa_vbap_po2-posnr.
+        wa_final-kwmeng        = wa_vbap_po2-kwmeng.
+        wa_final-atc_plant     = wa_vbap_po2-werks.
+
+
+        LOOP AT it_vbrp_po INTO DATA(wa_vbrp2_po2) WHERE aubel = wa_vbap_po2-vbeln
+                                                   AND aupos = wa_vbap_po2-posnr.
+
+          lv_shipped_qty2    = lv_shipped_qty2 + wa_vbrp2_po2-fkimg.
+          CLEAR: wa_vbrp2_po2.
+        ENDLOOP.
+
+        wa_final-shipped_qty   = lv_shipped_qty2.
+
+        CLEAR: lv_shipped_qty2.
+*
+*        wa_final-balance_qty    = ( wa_final-kwmeng  - wa_final-shipped_qty ) - wa_final-delete_qty.        "order qty - shipped qty - del qty
+**        -------------------------------------------------------" wa_final-delete_qty. ++28.02.2024
+*        wa_final-difference_qty = wa_final-remaining_qty - wa_final-balance_qty .
+
+        LOOP AT it_vbep_po INTO DATA(wa_vbep2_po2) WHERE vbeln = wa_vbap_po2-vbeln
+                                                 AND posnr = wa_vbap_po2-posnr.
+
+          CASE wa_vbep2_po2-lifsp.
+            WHEN '55'.
+              lv_delete_qty2  = lv_delete_qty2 + wa_vbep2_po2-wmeng.
+
+            WHEN '53' OR '54'  OR '56' OR '57' OR '58' OR '59' OR ' '.
+              lv_promise_qty2  = lv_promise_qty2 + wa_vbep2_po2-wmeng.
+
+          ENDCASE.
+
+          CLEAR: wa_vbep2_po2.
+        ENDLOOP.
+
+        wa_final-delete_qty  = lv_delete_qty2 .
+        wa_final-promise_qty  = lv_promise_qty2 .
+
+
+        wa_final-balance_qty    = ( wa_final-kwmeng  - wa_final-shipped_qty ) - wa_final-delete_qty.        "order qty - shipped qty - del qty
+*        -------------------------------------------------------" wa_final-delete_qty. ++28.02.2024
+        wa_final-difference_qty = wa_final-remaining_qty - wa_final-balance_qty .
+
+
+        IF wa_final-ebeln IS INITIAL.
+          wa_final-remarks  = 'YOHTA SO/PO not present in YOHTA SAP'.
+        ENDIF.
+
+        APPEND wa_final TO it_final.
+
+*
+      ENDIF.
+    ENDIF.
+
+    CLEAR:  wa_final, wa_vbap_po2, lv_delete_qty2, lv_promise_qty2.
+  ENDLOOP.
+***-------------------------------END CODE FOR SO WITH NO PO REFERENCE--------------------------------------------------------------------------------
+*-----------------------------------End code for Reverse Logic Getting PO from ATC SO---------------------------------------------------------------------
+
+
+
+  IF it_final IS NOT INITIAL.
+
+    CLEAR: wa_final.
+    LOOP AT it_final INTO wa_final.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-ebeln
+        IMPORTING
+          output = wa_final-ebeln.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-pur_req
+        IMPORTING
+          output = wa_final-pur_req.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-kunnr
+        IMPORTING
+          output = wa_final-kunnr.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-yohta_so
+        IMPORTING
+          output = wa_final-yohta_so.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-bstnk
+        IMPORTING
+          output = wa_final-bstnk.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-vbeln
+        IMPORTING
+          output = wa_final-vbeln.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-kunnr_we
+        IMPORTING
+          output = wa_final-kunnr_we.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-matnr
+        IMPORTING
+          output = wa_final-matnr.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-lifnr
+        IMPORTING
+          output = wa_final-lifnr.
+
+      MODIFY it_final FROM wa_final.
+      CLEAR: wa_final.
+
+    ENDLOOP.
+
+
+
+    SORT it_final ASCENDING BY vbeln posnr.
+
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form display_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM display_data .
+  PERFORM build_fcat_row USING :
+
+        'IT_FINAL'      'LIFNR'              'Vendor No'                                                             '20'       ,
+        'IT_FINAL'      'YOHTA_SO'           'YOHTA SO'                                                              '10'       ,
+        'IT_FINAL'      'YOHTA_SO_ITEM'      'YOHTA SO Item'                                                         '20'       ,
+        'IT_FINAL'      'YOHTA_SO_QTY'       'YOHTA SO Qty'                                                          '20'       ,
+        'IT_FINAL'      'CUST_DELDATE'       'Customer Delivery Date'                                                '20'       ,
+        'IT_FINAL'      'DEL_INSTS'          'Delivery Instructions'                                                 '20'       ,
+        'IT_FINAL'      'PUR_REQ'            'Purchase Requisition'                                                  '10'       ,
+        'IT_FINAL'      'PUR_ITM'            'Purchase Requisition Item'                                             '20'       ,
+        'IT_FINAL'      'PUR_QTY'            'Purchase Requisition Qty'                                              '20'       ,
+        'IT_FINAL'      'EBELN'              'YOHTA Purchase Order'                                                  '10'       ,
+        'IT_FINAL'      'EBELP'              'YOHTA PO Item'                                                         '20'       ,
+        'IT_FINAL'      'BEDAT'              'YOHTA PO Date'                                                         '20'       ,
+        'IT_FINAL'      'ZZOEAF'             'Branch Code'                                                           '20'       ,
+        'IT_FINAL'      'WERKS'              'YOHTA Plant'                                                           '20'       ,
+        'IT_FINAL'      'LGORT'              'Location'                                                              '20'       ,
+        'IT_FINAL'      'KUNNR'              'Customer'                                                              '20'       ,
+        'IT_FINAL'      'CUST_NAME'          'Customer Name'                                                         '40'       ,
+        'IT_FINAL'      'MATNR'              'Material No'                                                           '40'       ,
+        'IT_FINAL'      'MAKTX'              'Material Description'                                                  '40'       ,
+        'IT_FINAL'      'MENGE'              'PO Original Qty'                                                       '20'       ,
+        'IT_FINAL'      'CURRENT_PO_QTY'     'Current PO Qty'                                                        '20'       ,
+        'IT_FINAL'      'CONTAINER_FILL'     'Container Fill % ( Balance Qty )'                                      '20'       ,
+        'IT_FINAL'      'TONS'               'Tons ( Balance Qty )'                                                  '20'       ,
+        'IT_FINAL'      'GRN_QTY'            'GRN Qty'                                                               '20'       ,
+        'IT_FINAL'      'LFIMG1'             'IBD Shipped Qty'                                                       '20'       ,
+        'IT_FINAL'      'LFIMG2'             'IBD Open Qty'                                                          '20'       ,
+        'IT_FINAL'      'REMAINING_QTY'      'YOHTA Remaining Qty ( Balance qty excluding in transit and ASN )'      '20'       ,
+        'IT_FINAL'      'ATC_PLANT'          'ATC Plant'                                                             '20'       ,
+        'IT_FINAL'      'KUNNR_WE'           'Ship to Party No.'                                                     '20'       ,
+        'IT_FINAL'      'NAME1'              'Ship to Party Name'                                                    '40'       ,
+        'IT_FINAL'      'BSTNK'              'Customer Reference'                                                    '20'       ,
+        'IT_FINAL'      'VBELN'              'ATC Sales Order'                                                       '10'       ,
+        'IT_FINAL'      'POSNR'              'ATC SO Item'                                                           '20'       ,
+        'IT_FINAL'      'KWMENG'             'Order Qty'                                                             '20'       ,
+        'IT_FINAL'      'PROMISE_QTY'        'Promise Qty'                                                           '20'       ,
+        'IT_FINAL'      'DELETE_QTY'         'Delete Qty'                                                            '20'       ,
+        'IT_FINAL'      '40HC_POINT'         '40HC Point'                                                            '20'       ,
+        'IT_FINAL'      'SHIPPED_QTY'        'Shipped Qty'                                                           '20'       ,
+        'IT_FINAL'      'BALANCE_QTY'        'Balance Qty'                                                           '20'       ,
+        'IT_FINAL'      'DIFFERENCE_QTY'     'Difference ( YOHTA PO Qty - ATC SO Balance Qty )'                      '20'       ,
+        'IT_FINAL'      'REMARKS'            'Remarks'                                                               '40'       .
+
+  wa_layout-colwidth_optimize     =  'X'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      is_layout                = wa_layout
+      it_fieldcat              = it_fieldcat
+    TABLES
+      t_outtab                 = it_final
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+ENDFORM.
+
+FORM build_fcat_row  USING  p_tabname
+                     p_fieldname
+                     p_seltext
+                     p_length
+                     .
+  wa_fieldcat-tabname   = p_tabname.
+  wa_fieldcat-fieldname = p_fieldname.
+  wa_fieldcat-seltext_l = p_seltext.
+  wa_fieldcat-outputlen = p_length.
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR: wa_fieldcat.
+ENDFORM.
+
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZGUI'.
+ENDFORM.
