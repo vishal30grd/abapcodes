@@ -1,0 +1,606 @@
+INCLUDE zya_mmr_value_entries_report_s.
+INCLUDE zya_mmr_value_entries_report_t.
+INCLUDE zya_mmr_value_entries_report_f.
+
+START-OF-SELECTION.
+
+  IF s_matnr  IS INITIAL AND
+     s_werks  IS INITIAL AND
+     s_lgort  IS INITIAL AND
+     s_lifnr  IS INITIAL AND
+     s_kunnr  IS INITIAL AND
+     s_bwart  IS INITIAL AND
+     s_budat  IS INITIAL AND
+     s_matk   IS INITIAL AND
+     s_matko  IS INITIAL .
+
+    MESSAGE 'Restrict your selection' TYPE 'S' DISPLAY LIKE 'W'.
+  ELSE.
+    PERFORM get_data.
+    IF gt_mb51 IS NOT INITIAL.
+      PERFORM display_data.
+    ELSE.
+      MESSAGE 'Data Not Found' TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
+  ENDIF.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_YOTR_AVAIL_INVENTORY_S
+*&---------------------------------------------------------------------*
+
+TABLES: mard, mseg, mkpf.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+  SELECT-OPTIONS: s_matnr FOR mard-matnr,
+                  s_werks FOR mard-werks," OBLIGATORY,
+                  s_lgort FOR mard-lgort,
+                  s_lifnr FOR mseg-lifnr,
+                  s_kunnr FOR mseg-kunnr,
+                  s_bwart FOR mseg-bwart,
+                  s_budat FOR mkpf-budat,
+                  s_matk  FOR mseg-mat_kdauf,     "mseg-MAT_KDAUF
+                  s_matko FOR mseg-mat_kdpos.     "mseg-MAT_KDPOS
+
+
+SELECTION-SCREEN: END OF BLOCK b1.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_YOTR_AVAIL_INVENTORY_T
+*&---------------------------------------------------------------------*
+
+
+TYPES: BEGIN OF ts_mb51,
+         matnr         TYPE mseg-matnr,
+         maktx         TYPE makt-maktx,
+         werks         TYPE mseg-werks,
+         name1         TYPE t001w-name1,
+         lgort         TYPE mseg-lgort,
+         bwart         TYPE mseg-bwart,
+         btext         TYPE t156t-btext,
+         sobkz         TYPE mseg-sobkz,
+         mblnr         TYPE mkpf-mblnr,
+         zeile         TYPE mseg-zeile,
+         budat         TYPE mkpf-budat,
+         erfmg         TYPE mseg-erfmg,
+         erfme         TYPE mseg-erfme,
+         ablad         TYPE mseg-ablad,
+         anln1         TYPE mseg-anln1,
+         anln2         TYPE mseg-anln2,
+         aplzl         TYPE mseg-aplzl,
+         aufnr         TYPE mseg-aufnr,
+         aufpl         TYPE mseg-aufpl,
+         bktxt         TYPE mkpf-bktxt,
+         bldat         TYPE mkpf-bldat,
+         bpmng         TYPE mseg-bpmng,
+         bprme         TYPE mseg-bprme,
+         bstme         TYPE mseg-bstme,
+         bstmg         TYPE mseg-bstmg,
+         bukrs         TYPE mseg-bukrs,
+         bwtar         TYPE mseg-bwtar,
+         charg         TYPE mseg-charg,
+         cpudt         TYPE mkpf-cpudt,
+         cputm         TYPE mkpf-cputm,
+         dmbtr         TYPE mseg-dmbtr,
+         ebeln         TYPE mseg-ebeln,
+         longnum       TYPE goitem-longnum,
+         ebelp         TYPE mseg-ebelp,
+         ewm_gmdoc     TYPE mseg-ewm_gmdoc,
+         ewm_lgnum     TYPE mseg-ewm_lgnum,
+         exbwr         TYPE mseg-exbwr,
+         exvkw         TYPE mseg-exvkw,
+         frbnr         TYPE mkpf-frbnr,
+         grund         TYPE mseg-grund,
+         kdauf         TYPE mseg-kdauf,
+         kdein         TYPE mseg-kdein,
+         kdpos         TYPE mseg-kdpos,
+         kostl         TYPE mseg-kostl,
+         kunnr         TYPE mseg-kunnr,
+         kzbew         TYPE mseg-kzbew,
+         kzvbr         TYPE mseg-kzvbr,
+         kzzug         TYPE mseg-kzzug,
+         lifnr         TYPE mseg-lifnr,
+         mat_kdauf     TYPE mseg-mat_kdauf,
+         mat_kdpos     TYPE mseg-mat_kdpos,
+         meins         TYPE mseg-meins,
+         menge         TYPE mseg-menge,
+         mjahr         TYPE mkpf-mjahr,
+         nplnr         TYPE mseg-nplnr,
+         vornr         TYPE resb-vornr,
+         pspid         TYPE prps-posid,
+         rsnum         TYPE mseg-rsnum,
+         rspos         TYPE mseg-rspos,
+         sakto         TYPE mseg-sakto,
+         sgtxt         TYPE mseg-sgtxt,
+         sgt_scat      TYPE mseg-sgt_scat,
+         shkzg         TYPE mseg-shkzg,
+         usnam         TYPE mkpf-usnam,
+         vgart         TYPE mkpf-vgart,
+         vkwrt         TYPE mseg-vkwrt,
+         waers         TYPE mseg-waers,
+         xabln         TYPE mkpf-xabln,
+         xauto         TYPE mseg-xauto,
+         xblnr         TYPE mkpf-xblnr,
+         maa_urzei     TYPE mseg-maa_urzei,
+         xmacc         TYPE mseg-xmacc,
+         ocean         TYPE p LENGTH 15 DECIMALS 3,
+         drayage       TYPE p LENGTH 15 DECIMALS 3,
+         anti_dumping  TYPE p LENGTH 15 DECIMALS 3,
+         brokerage     TYPE p LENGTH 15 DECIMALS 3,
+         countervailin TYPE p LENGTH 15 DECIMALS 3,
+         duty_cost     TYPE p LENGTH 15 DECIMALS 3,
+         hmf           TYPE p LENGTH 15 DECIMALS 3,
+         mpf           TYPE p LENGTH 15 DECIMALS 3,
+         mvgr1         TYPE mvke-mvgr1,
+         bezei1        TYPE tvm1t-bezei,
+         mvgr2         TYPE mvke-mvgr2,
+         bezei2        TYPE tvm2t-bezei,
+         item_status   TYPE char20,
+
+       END OF ts_mb51.
+
+
+DATA: gt_mb51     TYPE TABLE OF ts_mb51,
+      gw_mb51     TYPE ts_mb51,
+      go_data     TYPE REF TO data,
+
+      gr_table2   TYPE REF TO   data,
+      gt_line2    TYPE REF TO   data,
+
+      it_fieldcat TYPE slis_t_fieldcat_alv,
+      wa_fieldcat TYPE slis_fieldcat_alv,
+      wa_layout   TYPE slis_layout_alv.
+
+
+FIELD-SYMBOLS:
+  <gt_data>   TYPE ANY TABLE,
+  <gt_table2> TYPE STANDARD TABLE,
+  <gt_tline2> TYPE any.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_YOTR_AVAIL_INVENTORY_F
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form get_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data .
+  DATA: it_allocvalueschar TYPE bapi1003_alloc_values_char OCCURS 0 WITH HEADER LINE,
+        it_allocvaluescurr TYPE bapi1003_alloc_values_curr OCCURS 0 WITH HEADER LINE,
+        it_allocvaluesnum  TYPE bapi1003_alloc_values_num  OCCURS 0 WITH HEADER LINE,
+        it_return          TYPE  bapiret2 OCCURS 0 WITH HEADER LINE,
+        lv_matnr           TYPE bapi1003_key-object.
+
+
+  cl_salv_bs_runtime_info=>clear_all( ).
+  REFRESH : gt_mb51[].
+
+  cl_salv_bs_runtime_info=>set( EXPORTING display  = abap_false
+                                     metadata = abap_false
+                                     data     = abap_true ).
+
+
+  SUBMIT rm07docs   WITH matnr IN s_matnr                    "MB51
+                    WITH werks IN s_werks
+                    WITH lgort IN s_lgort
+                    WITH lifnr IN s_lifnr
+                    WITH kunnr IN s_kunnr
+                    WITH bwart IN s_bwart
+                    WITH budat IN s_budat
+                    WITH mat_kdau IN s_matk        "mseg-MAT_KDAUF
+                    WITH mat_kdpo IN s_matko       "mseg-MAT_KDPOS
+
+                    WITH rflat_l EQ abap_true
+                    WITH database EQ abap_true
+
+                    EXPORTING LIST TO MEMORY AND RETURN.
+
+
+  TRY.
+      cl_salv_bs_runtime_info=>get_data_ref(
+        IMPORTING r_data = go_data ).
+      ASSIGN go_data->* TO <gt_data>.
+
+      IF <gt_data> IS ASSIGNED.
+        LOOP AT <gt_data> ASSIGNING FIELD-SYMBOL(<fs_data>).
+          MOVE-CORRESPONDING <fs_data> TO gw_mb51.
+          APPEND gw_mb51 TO gt_mb51.
+          CLEAR: gw_mb51.
+        ENDLOOP.
+      ELSE.
+*          IMSG = 'No Data Found'.
+      ENDIF.
+
+    CATCH cx_salv_bs_sc_runtime_info ##NO_HANDLER.
+*        IMSG = 'No Data Found'.
+
+  ENDTRY.
+  cl_salv_bs_runtime_info=>clear_all( ).
+
+  IF gt_mb51 IS NOT INITIAL.
+    SORT gt_mb51 BY matnr werks.
+    DELETE gt_mb51 WHERE bwart NE '601' AND bwart NE '101'  AND bwart NE '201' AND bwart NE '261' AND bwart NE '161' AND bwart NE '641'
+                   AND   bwart NE '701' AND bwart NE '702'  AND bwart NE '501' AND bwart NE '561' AND bwart NE '551' .
+
+    SELECT mblnr, cancelled, bukrs
+      FROM matdoc
+      INTO TABLE @DATA(it_matdoc)
+      FOR ALL ENTRIES IN @gt_mb51
+      WHERE mblnr = @gt_mb51-mblnr.
+
+    IF sy-subrc = 0.
+      SORT it_matdoc BY mblnr.
+      DELETE it_matdoc WHERE cancelled = 'X' .
+      DELETE it_matdoc WHERE bukrs NE '3000'.
+    ENDIF.
+
+    SELECT rldnr, belnr, docln, awref, awitem, ktosl, wsl
+      FROM acdoca
+      INTO TABLE @DATA(it_acdoca)
+      FOR ALL ENTRIES IN @gt_mb51
+      WHERE awref = @gt_mb51-mblnr
+      AND rbukrs = '3000'
+      AND ktosl IN ( 'OF1',  'DR1', 'ADD',  'BR1', 'CVD', 'DT1', 'HMF', 'MPF' ).
+
+    IF it_acdoca IS NOT INITIAL.
+      SORT it_acdoca BY awref awitem ktosl.
+    ENDIF.
+
+    SELECT matnr, mvgr1, mvgr2
+      FROM mvke
+      INTO TABLE @DATA(it_mvke)
+      FOR ALL ENTRIES IN @gt_mb51
+      WHERE matnr  = @gt_mb51-matnr
+      AND vkorg    = '3000'
+      AND vtweg    = '20'.
+
+    IF sy-subrc = 0.
+      SORT it_mvke BY matnr.
+
+      SELECT spras, mvgr1, bezei
+        FROM tvm1t
+        INTO TABLE @DATA(it_tvm1t)
+        FOR ALL ENTRIES IN @it_mvke
+        WHERE mvgr1 = @it_mvke-mvgr1
+        AND spras   = 'E'.
+
+      IF sy-subrc = 0.
+        SORT it_tvm1t BY mvgr1.
+        DELETE it_tvm1t WHERE bezei =  '' .
+      ENDIF.
+
+      SELECT spras, mvgr2, bezei
+        FROM tvm2t
+        INTO TABLE @DATA(it_tvm2t)
+        FOR ALL ENTRIES IN @it_mvke
+        WHERE mvgr2 = @it_mvke-mvgr2
+        AND spras   = 'E'.
+
+      IF sy-subrc = 0.
+        SORT it_tvm2t BY mvgr2.
+        DELETE it_tvm2t WHERE bezei =  '' .
+      ENDIF.
+
+
+    ENDIF.
+  ENDIF.
+
+
+  LOOP AT gt_mb51 INTO DATA(lwa_mb51).
+
+    READ TABLE it_matdoc INTO DATA(wa_matdoc) WITH KEY mblnr = lwa_mb51-mblnr BINARY SEARCH.
+    IF sy-subrc = 0.
+
+      READ TABLE it_acdoca INTO DATA(wa_acdoca) WITH KEY awref   = lwa_mb51-mblnr
+                                                         awitem  = lwa_mb51-zeile
+                                                         ktosl   = 'OF1' BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-ocean       = wa_acdoca-wsl             .
+
+        IF lwa_mb51-ocean < 0.
+          lwa_mb51-ocean = lwa_mb51-ocean * -1.
+        ENDIF.
+
+      ENDIF.
+
+      CLEAR: wa_acdoca.
+      READ TABLE it_acdoca INTO  wa_acdoca WITH KEY awref   = lwa_mb51-mblnr
+                                                         awitem  = lwa_mb51-zeile
+                                                         ktosl   = 'DR1' BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-drayage   = wa_acdoca-wsl             .
+
+        IF wa_acdoca-wsl < 0.
+          lwa_mb51-drayage  = lwa_mb51-drayage   * -1.
+        ENDIF.
+
+      ENDIF.
+
+      CLEAR: wa_acdoca.
+      READ TABLE it_acdoca INTO  wa_acdoca WITH KEY awref   = lwa_mb51-mblnr
+                                                         awitem  = lwa_mb51-zeile
+                                                         ktosl   = 'ADD' BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-anti_dumping     = wa_acdoca-wsl             .
+
+        IF lwa_mb51-anti_dumping < 0.
+          lwa_mb51-anti_dumping = lwa_mb51-anti_dumping * -1.
+        ENDIF.
+
+      ENDIF.
+
+      CLEAR: wa_acdoca.
+      READ TABLE it_acdoca INTO  wa_acdoca WITH KEY awref   = lwa_mb51-mblnr
+                                                          awitem  = lwa_mb51-zeile
+                                                          ktosl   = 'BR1' BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-brokerage     = wa_acdoca-wsl             .
+
+        IF lwa_mb51-brokerage  < 0.
+          lwa_mb51-brokerage  = lwa_mb51-brokerage  * -1.
+        ENDIF.
+
+      ENDIF.
+
+      CLEAR: wa_acdoca.
+      READ TABLE it_acdoca INTO  wa_acdoca WITH KEY awref   = lwa_mb51-mblnr
+                                                          awitem  = lwa_mb51-zeile
+                                                          ktosl   = 'CVD' BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-countervailin     = wa_acdoca-wsl             .
+
+        IF lwa_mb51-countervailin  < 0.
+          lwa_mb51-countervailin  = lwa_mb51-countervailin  * -1.
+        ENDIF.
+
+      ENDIF.
+
+      CLEAR: wa_acdoca.
+      READ TABLE it_acdoca INTO  wa_acdoca WITH KEY awref   = lwa_mb51-mblnr
+                                                         awitem  = lwa_mb51-zeile
+                                                         ktosl   = 'DT1' BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-duty_cost     = wa_acdoca-wsl             .
+
+        IF lwa_mb51-duty_cost < 0.
+          lwa_mb51-duty_cost = lwa_mb51-duty_cost * -1.
+        ENDIF.
+
+      ENDIF.
+
+      CLEAR: wa_acdoca.
+      READ TABLE it_acdoca INTO  wa_acdoca WITH KEY awref   = lwa_mb51-mblnr
+                                                          awitem  = lwa_mb51-zeile
+                                                          ktosl   = 'HMF' BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-hmf     = wa_acdoca-wsl             .
+
+        IF lwa_mb51-hmf  < 0.
+          lwa_mb51-hmf  = lwa_mb51-hmf  * -1.
+        ENDIF.
+
+      ENDIF.
+
+      CLEAR: wa_acdoca.
+      READ TABLE it_acdoca INTO  wa_acdoca WITH KEY awref   = lwa_mb51-mblnr
+                                                         awitem  = lwa_mb51-zeile
+                                                         ktosl   = 'MPF' BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-mpf     = wa_acdoca-wsl             .
+
+        IF lwa_mb51-mpf < 0.
+          lwa_mb51-mpf = lwa_mb51-mpf * -1.
+        ENDIF.
+
+      ENDIF.
+      CLEAR: wa_acdoca.
+
+      READ TABLE it_mvke INTO DATA(wa_mvke) WITH KEY matnr = lwa_mb51-matnr BINARY SEARCH.
+      IF sy-subrc = 0.
+        lwa_mb51-mvgr1   = wa_mvke-mvgr1.
+        lwa_mb51-mvgr2   = wa_mvke-mvgr2.
+
+        READ TABLE it_tvm1t INTO DATA(wa_tvm1t) WITH KEY mvgr1 = wa_mvke-mvgr1 BINARY SEARCH.
+        IF sy-subrc = 0.
+          lwa_mb51-bezei1     = wa_tvm1t-bezei.
+        ENDIF.
+
+        READ TABLE it_tvm2t INTO DATA(wa_tvm2t) WITH KEY mvgr2 = wa_mvke-mvgr2 BINARY SEARCH.
+        IF sy-subrc = 0.
+          lwa_mb51-bezei2     = wa_tvm2t-bezei.
+        ENDIF.
+      ENDIF.
+
+      lv_matnr = lwa_mb51-matnr.
+
+      IF lv_matnr IS NOT INITIAL.
+
+        CALL FUNCTION 'BAPI_OBJCL_GETDETAIL'
+          EXPORTING
+            objectkey       = lv_matnr
+            objecttable     = 'MARA'
+            classnum        = 'YOHTA_MAT_CLASS'
+            classtype       = '001'
+            keydate         = sy-datum
+            language        = sy-langu
+          TABLES
+            allocvaluesnum  = it_allocvaluesnum
+            allocvalueschar = it_allocvalueschar
+            allocvaluescurr = it_allocvaluescurr
+            return          = it_return.
+
+        IF sy-subrc = 0.
+          IF it_allocvalueschar IS NOT INITIAL.
+            READ TABLE it_allocvalueschar WITH KEY charact = 'ZYOH_ISTAT'.
+            IF sy-subrc = 0.  .
+              lwa_mb51-item_status = it_allocvalueschar-value_char.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+
+      ENDIF.
+
+      MODIFY gt_mb51 FROM lwa_mb51 TRANSPORTING ocean drayage anti_dumping brokerage countervailin duty_cost hmf mpf
+                                                mvgr1 bezei1 mvgr2 bezei2 item_status.
+
+      REFRESH:  it_allocvaluesnum[],  it_allocvalueschar[], it_allocvaluescurr[], it_return[].
+      CLEAR: lv_matnr.
+    ELSE.
+      DELETE gt_mb51 WHERE mblnr = lwa_mb51-mblnr AND zeile = lwa_mb51-zeile.
+    ENDIF.
+
+    CLEAR: lwa_mb51.
+
+  ENDLOOP.
+
+
+
+ENDFORM.
+
+
+FORM display_data.
+
+  PERFORM build_fcat_row USING :
+
+     'GT_MB51'   'MATNR'               ' '                            'MATNR'      'MSEG'   ,     "  '40'  ,
+     'GT_MB51'   'MAKTX'               ' '                            'MAKTX'      'MAKT'   ,     "  '40'  ,
+     'GT_MB51'   'WERKS'               ' '                            'WERKS'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'NAME1'               ' '                            'NAME1'      'T001W'  ,     "  '40'  ,
+     'GT_MB51'   'LGORT'               ' '                            'LGORT'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BWART'               ' '                            'BWART'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BTEXT'               ' '                            'BTEXT'      'T156T'  ,     "  '20'  ,
+     'GT_MB51'   'SOBKZ'               ' '                            'SOBKZ'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'MBLNR'               ' '                            'MBLNR'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'ZEILE'               ' '                            'ZEILE'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BUDAT'               ' '                            'BUDAT'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'ERFMG'               ' '                            'ERFMG'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'ERFME'               ' '                            'ERFME'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'ABLAD'               ' '                            'ABLAD'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'ANLN1'               ' '                            'ANLN1'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'ANLN2'               ' '                            'ANLN2'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'APLZL'               ' '                            'APLZL'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'AUFNR'               ' '                            'AUFNR'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'AUFPL'               ' '                            'AUFPL'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BKTXT'               ' '                            'BKTXT'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'BLDAT'               ' '                            'BLDAT'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'BPMNG'               ' '                            'BPMNG'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BPRME'               ' '                            'BPRME'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BSTME'               ' '                            'BSTME'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BSTMG'               ' '                            'BSTMG'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BUKRS'               ' '                            'BUKRS'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'BWTAR'               ' '                            'BWTAR'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'CHARG'               ' '                            'CHARG'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'CPUDT'               ' '                            'CPUDT'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'CPUTM'               ' '                            'CPUTM'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'DMBTR'               ' '                            'DMBTR'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'EBELN'               ' '                            'EBELN'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'LONGNUM'             ' '                            'LONGNUM'    'GOITEM' ,     "  '20'  ,
+     'GT_MB51'   'EBELP'               ' '                            'EBELP'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'EWM_GMDOC'           ' '                            'EWM_GMDOC'  'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'EWM_LGNUM'           ' '                            'EWM_LGNUM'  'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'EXBWR'               ' '                            'EXBWR'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'EXVKW'               ' '                            'EXVKW'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'FRBNR'               ' '                            'FRBNR'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'GRUND'               ' '                            'GRUND'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'KDAUF'               ' '                            'KDAUF'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'KDEIN'               ' '                            'KDEIN'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'KDPOS'               ' '                            'KDPOS'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'KOSTL'               ' '                            'KOSTL'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'KUNNR'               ' '                            'KUNNR'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'KZBEW'               ' '                            'KZBEW'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'KZVBR'               ' '                            'KZVBR'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'KZZUG'               ' '                            'KZZUG'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'LIFNR'               ' '                            'LIFNR'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'MAT_KDAUF'           ' '                            'MAT_KDAUF'  'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'MAT_KDPOS'           ' '                            'MAT_KDPOS'  'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'MEINS'               ' '                            'MEINS'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'MENGE'               ' '                            'MENGE'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'MJAHR'               ' '                            'MJAHR'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'NPLNR'               ' '                            'NPLNR'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'VORNR'               ' '                            'VORNR'      'RESB'   ,     "  '20'  ,
+     'GT_MB51'   'PSPID'               ' '                            'POSID'      'PRPS'   ,     "  '20'  ,
+     'GT_MB51'   'RSNUM'               ' '                            'RSNUM'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'RSPOS'               ' '                            'RSPOS'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'SAKTO'               ' '                            'SAKTO'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'SGTXT'               ' '                            'SGTXT'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'SGT_SCAT'            ' '                            'SGT_SCAT'   'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'SHKZG'               ' '                            'SHKZG'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'USNAM'               ' '                            'USNAM'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'VGART'               ' '                            'VGART'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'VKWRT'               ' '                            'VKWRT'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'WAERS'               ' '                            'WAERS'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'XABLN'               ' '                            'XABLN'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'XAUTO'               ' '                            'XAUTO'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'XBLNR'               ' '                            'XBLNR'      'MKPF'   ,     "  '20'  ,
+     'GT_MB51'   'MAA_URZEI'           ' '                            'MAA_URZEI'  'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'XMACC'               ' '                            'XMACC'      'MSEG'   ,     "  '20'  ,
+     'GT_MB51'   'OCEAN'               'Ocean Freight (Value) '        ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'DRAYAGE'             'Freight Drayage (Value) '      ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'ANTI_DUMPING'        'Anti-Dumping Duty % '          ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'BROKERAGE'           'Brokerage Cost % '             ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'COUNTERVAILIN'       'Countervailing Duty% '         ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'DUTY_COST'           'Duty Cost % '                  ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'HMF'                 'HMF % '                        ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'MPF'                 'MPF % '                        ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'MVGR1'               'Item Category  '               ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'BEZEI1'              'Item Category Desc '           ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'MVGR2'               'Item Sub-Category  '           ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'BEZEI2'              'Item Sub-Category Desc  '      ' '         ' '      ,     "  '20'  ,
+     'GT_MB51'   'ITEM_STATUS'         'Item Status  '                 ' '         ' '      .     "  '20'  .
+
+
+  wa_layout-colwidth_optimize     =  'X'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      is_layout                = wa_layout
+      it_fieldcat              = it_fieldcat
+    TABLES
+      t_outtab                 = gt_mb51
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+
+
+ENDFORM.
+
+
+
+FORM build_fcat_row  USING  p_tabname
+                     p_fieldname
+                     p_seltext
+                     p_reffield
+                     p_reftab
+*                     p_length
+                     .
+
+
+  wa_fieldcat-tabname        = p_tabname.
+  wa_fieldcat-fieldname      = p_fieldname.
+  wa_fieldcat-ref_fieldname  = p_reffield.
+  wa_fieldcat-ref_tabname    = p_reftab.
+  wa_fieldcat-seltext_l      = p_seltext.
+*  wa_fieldcat-outputlen      = p_length.
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR: wa_fieldcat.
+
+ENDFORM.
+
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZGUI'.
+ENDFORM.
