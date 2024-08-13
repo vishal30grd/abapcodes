@@ -1,0 +1,1219 @@
+INCLUDE zya_mmr_drp_sale_copy_t1.
+INCLUDE zya_mmr_drp_sale_copy_s1.
+INCLUDE zya_mmr_drp_sale_copy_f1.
+
+START-OF-SELECTION.
+  IF s_plant-low CP '3*'.
+    PERFORM get_data.
+    IF it_final IS NOT INITIAL.
+      IF r1 = 'X'.
+        PERFORM push_to_al11.
+      ELSEIF r2 = 'X'.
+        PERFORM fcat.
+        PERFORM alv.
+      ENDIF.
+    ELSE.
+      MESSAGE ' DATA NOT FOUND ' TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
+  ELSE.
+    MESSAGE 'Please enter valid plant' TYPE   'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_DRP_SALE_T
+*&---------------------------------------------------------------------*
+TYPES : BEGIN OF st_header,
+          fieldname(100),
+        END OF st_header,
+        BEGIN OF ty_fin,
+
+          matnr       TYPE marc-matnr,
+          l_matnr     TYPE ausp-atwrt,  ""
+          ferth       TYPE mara-ferth,  ""
+          werks       TYPE marc-werks,
+          groes       TYPE mara-groes,
+          maktx       TYPE makt-maktx,
+          mvgr1       TYPE tvm1t-bezei,
+          mvgr3       TYPE tvm2t-bezei,
+          extwg       TYPE twewt-ewbez,
+          verpr       TYPE mbew-verpr,
+          netgew      TYPE wertv13,     "mara-ntgew,
+          lgort       TYPE mard-lgort,
+          lgobe       TYPE t001l-lgobe,
+          stock       TYPE atpds-qty_o,
+          labst       TYPE mard-labst,
+          avl_qty     TYPE mard-labst,
+          ord_qty     TYPE merep_outtab_purchdoc-menge,
+          atwrt       TYPE char30,
+          lfimg       TYPE lips-lfimg,
+          lfimg1      TYPE lips-lfimg,
+          qty_ord     TYPE lips-lfimg,
+          stock_qty3  TYPE lips-lfimg,
+          stock_qty6  TYPE lips-lfimg,
+          stock_qty9  TYPE lips-lfimg,
+          stock_qty12 TYPE lips-lfimg,
+          stock_qty   TYPE lips-lfimg,
+          stock_qty1  TYPE lips-lfimg,
+
+        END OF ty_fin.
+
+TYPES      BEGIN OF ty_me2m.
+INCLUDE STRUCTURE merep_outtab_purchdoc.
+*          m_matnr TYPE merep_outtab_purchdoc-ematn,
+*
+*          werk    TYPE merep_outtab_purchdoc-werks,
+*          qty     TYPE merep_outtab_purchdoc-menge,
+
+TYPES  END OF ty_me2m.
+
+TYPES: BEGIN OF ty_objek,
+         matnr TYPE cuobn,
+       END OF ty_objek.
+
+DATA : it_final TYPE TABLE OF ty_fin,
+       wa_final TYPE ty_fin,
+       it_objek TYPE STANDARD TABLE OF ty_objek,
+       it_ausp  TYPE STANDARD TABLE OF ausp,
+       wa_ausp  TYPE ausp,
+       wa_objek TYPE ty_objek.
+
+
+DATA : it_me2m TYPE TABLE OF ty_me2m,
+       wa_me2m TYPE ty_me2m.
+
+DATA: it_header          TYPE STANDARD TABLE OF st_header,
+      wa_header          TYPE st_header,
+
+
+      ld_filename        TYPE string,
+      ld_path            TYPE string,
+      ld_fullpath        TYPE string,
+      ld_result          TYPE i,
+      it_fcat            TYPE slis_t_fieldcat_alv,
+      wa_fcat            LIKE LINE OF it_fcat,
+      wa_layout          TYPE slis_layout_alv,
+      it_allocvalueschar TYPE bapi1003_alloc_values_char OCCURS 0 WITH HEADER LINE,
+      it_allocvaluescurr TYPE bapi1003_alloc_values_curr OCCURS 0 WITH HEADER LINE,
+      it_allocvaluesnum  TYPE bapi1003_alloc_values_num  OCCURS 0 WITH HEADER LINE,
+      it_return          TYPE  bapiret2 OCCURS 0 WITH HEADER LINE,
+      month_3            TYPE dats,
+      prev_dat           TYPE dats,
+      curr_dat           TYPE dats,
+      month_6            TYPE dats,
+      month_9            TYPE dats,
+      month_12           TYPE dats,
+      month_1            TYPE dats,
+      ord_tot            TYPE string,
+      customer           TYPE bapi1003_key-object,
+      lf_tot             TYPE lips-lfimg,
+      lf_tot1            TYPE lips-lfimg,
+      stot_qty3          TYPE matdoc-stock_qty,
+      stot_qty6          TYPE matdoc-stock_qty,
+      stot_qty9          TYPE matdoc-stock_qty,
+      stot_qty1          TYPE matdoc-stock_qty,
+      stot_qty           TYPE matdoc-stock_qty,
+      stot_qty12         TYPE matdoc-stock_qty.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_DRP_SALE_S
+*&---------------------------------------------------------------------*
+TABLES : marc,t001l.
+
+SELECTION-SCREEN BEGIN OF BLOCK a2 WITH FRAME .
+  SELECT-OPTIONS : s_matnr   FOR marc-matnr,
+                   s_lgort   FOR t001l-lgort,
+                   s_plant   FOR marc-werks OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK a2.
+
+SELECTION-SCREEN:BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-002.
+
+  PARAMETERS: r1 RADIOBUTTON GROUP rad1,
+              r2 RADIOBUTTON GROUP rad1.
+
+SELECTION-SCREEN:END OF BLOCK b1.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_DRP_SALE_F
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form fcat
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM fcat .
+
+  PERFORM build_fieldcat_row USING:
+        'IT_FINAL'      'MATNR'             'Material No.'                 '40'        'X'  ,
+        'IT_FINAL'      'L_MATNR'           'Nav legacy code'              '40'        'X'  ,
+        'IT_FINAL'      'FERTH'             'Parent Code'                  '40'        'X'  ,
+        'IT_FINAL'      'GROES'             'Size'                         '20'        'X'  ,
+        'IT_FINAL'      'MAKTX'             'Material Description'         '40'        'X'  ,
+        'IT_FINAL'      'MVGR1'             'Brand'                        '20'        'X'  ,
+        'IT_FINAL'      'MVGR3'             'Category'                     '20'        'X'  ,
+        'IT_FINAL'      'EXTWG'             'Model'                        '20'        'X'  ,
+        'IT_FINAL'      'VERPR'             'UnitCost'                     '20'        'X'  ,
+        'IT_FINAL'      'NETGEW'            'Unit Tons'                    '20'        'X'  ,
+        'IT_FINAL'      'ATWRT'             'Item Status'                  '20'        'X'  ,
+        'IT_FINAL'      'WERKS'             'Plant'                        '20'        'X'  ,
+*        'IT_FINAL'      'LGOBE'             'Storage Location'             '20'        'X'  , --BY ASHISH BHAGAT ON 16.04.2024 REQ BY MAHADEV
+        'IT_FINAL'      'LGORT'             'Storage Location'             '20'        'X'  ,
+        'IT_FINAL'      'LABST'             'On-Hand Quantity'             '20'        'X'  ,
+        'IT_FINAL'      'AVL_QTY'           'Available Qty'                '20'        'X'  ,
+        'IT_FINAL'      'ORD_QTY'           'On P.O.'                      '20'        'X'  ,
+        'IT_FINAL'      'LFIMG'             'P.O. In Transit'              '20'        'X'  ,
+        'IT_FINAL'      'LFIMG1'            'Open ASN Qty'                 '20'        'X'  ,
+        'IT_FINAL'      'QTY_ORD'           'Qty. on Back Order'           '20'        'X'  ,
+        'IT_FINAL'      'STOCK_QTY3'        'Last 3 Months'                '20'        'X'  ,
+        'IT_FINAL'      'STOCK_QTY6'        'Last 6 Months'                '20'        'X'  ,
+        'IT_FINAL'      'STOCK_QTY9'        'Last 9 Months'                '20'        'X'  ,
+        'IT_FINAL'      'STOCK_QTY12'       'Last 12 Months'               '20'        'X'  ,
+        'IT_FINAL'      'STOCK_QTY1'        'Last Month Sales'             '20'        'X'  ,
+        'IT_FINAL'      'STOCK_QTY'         'Current Month Sales'          '20'        'X'  .
+
+
+
+ENDFORM.
+
+
+FORM build_fieldcat_row  USING  p_tabname
+                                p_fieldname
+                                p_seltext
+                                p_length
+                                p_lowercase.
+
+  wa_fcat-tabname   = p_tabname.
+  wa_fcat-fieldname = p_fieldname.
+  wa_fcat-seltext_l = p_seltext.
+  wa_fcat-outputlen = p_length.
+  wa_fcat-lowercase = p_lowercase.
+
+  APPEND wa_fcat TO it_fcat.
+  CLEAR wa_fcat.
+
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form alv
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM alv .
+
+  wa_layout-zebra = 'X'.
+  wa_layout-colwidth_optimize = 'X'.
+
+  MESSAGE '' TYPE 'S'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      is_layout                = wa_layout
+      it_fieldcat              = it_fcat
+      i_save                   = 'X'
+    TABLES
+      t_outtab                 = it_final "it_stock1
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+ENDFORM.
+
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZGUIDPR'.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form get_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data .
+  TYPES: BEGIN OF ty_sdr_mat,
+           matnr        TYPE mara-matnr,
+           werks        TYPE mard-werks,
+           lgort        TYPE mard-lgort,
+           so_cnfr_qty  TYPE atpds-qty_c,
+           sto_cnfr_qty TYPE atpds-qty_c,
+         END OF ty_sdr_mat.
+
+  DATA : it_sdr_mat   TYPE TABLE OF ty_sdr_mat,
+         wa_sdr_mat   TYPE ty_sdr_mat,
+
+         lv_allocated TYPE mard-labst,
+         gr_table2    TYPE REF TO   data,
+         gt_line2     TYPE REF TO   data,
+         lv_atinn3    TYPE ausp-atinn,
+         lv_atinn     TYPE ausp-atinn,
+         lv_atwrt     TYPE ausp-atwrt.
+
+  SELECT matnr , werks
+    FROM marc
+    INTO TABLE @DATA(it_marc)
+    WHERE matnr IN @s_matnr
+    AND werks IN @s_plant.
+
+  IF it_marc IS NOT INITIAL.
+
+    SELECT matnr,werks,lgort,labst,lfmon,lfgja
+      FROM mard
+      INTO TABLE @DATA(it_mard)
+      FOR ALL ENTRIES IN @it_marc
+      WHERE matnr = @it_marc-matnr
+      AND werks = @it_marc-werks
+      AND lgort IN @s_lgort.
+
+*    IF it_mard IS NOT INITIAL.      --BY ASHISH BHAGAT ON 16.04.2024 REQ BY MAHADEV
+*      SELECT lgort , lgobe FROM t001l INTO TABLE @DATA(it_t001l) FOR ALL ENTRIES IN @it_mard
+*        WHERE lgort = @it_mard-lgort.
+*    ENDIF.
+
+    SELECT matnr,extwg,ntgew,groes
+      FROM mara
+      INTO TABLE @DATA(it_mara)
+      FOR ALL ENTRIES IN @it_marc
+      WHERE matnr = @it_marc-matnr.
+
+    IF it_mara IS NOT INITIAL.
+      SELECT extwg, ewbez
+        FROM twewt
+        INTO TABLE @DATA(it_twewt)
+        FOR ALL ENTRIES IN @it_mara
+        WHERE extwg = @it_mara-extwg
+        AND spras = 'E'.
+    ENDIF.
+
+    SELECT matnr,maktx,spras
+      FROM  makt
+      INTO TABLE @DATA(it_makt)
+      FOR ALL ENTRIES IN @it_marc
+      WHERE matnr = @it_marc-matnr
+      AND spras IN ( 'Z' , 'E' ).
+
+    SELECT matnr, vkorg, mvgr1, mvgr2, mvgr3
+      FROM mvke
+      INTO TABLE @DATA(it_mvke)
+      FOR ALL ENTRIES IN @it_marc
+      WHERE matnr = @it_marc-matnr
+      AND vkorg = '3000'
+      AND vtweg = '20'.
+
+    IF it_mvke IS NOT INITIAL.
+      SORT it_mvke BY matnr.
+
+      SELECT mvgr1 , bezei
+        FROM tvm1t
+        INTO TABLE @DATA(it_tvm1t)
+        FOR ALL ENTRIES IN @it_mvke
+        WHERE mvgr1 = @it_mvke-mvgr1
+        AND spras = 'E'.
+
+      SELECT mvgr2 , bezei                "++BY ASHISH BHAGAT ON 16.04.2024 REQ BY MAHADEV
+        FROM tvm2t
+        INTO TABLE @DATA(it_tvm2t)
+        FOR ALL ENTRIES IN @it_mvke
+        WHERE mvgr2 = @it_mvke-mvgr2
+        AND spras = 'E'.
+    ENDIF.
+
+    SELECT matnr,bwkey,verpr
+      FROM mbew
+      INTO TABLE @DATA(it_mbew)
+      FOR ALL ENTRIES IN @it_marc
+      WHERE matnr = @it_marc-matnr
+      AND bwkey = @it_marc-werks.
+
+    IF it_mbew IS NOT INITIAL.
+      SORT it_mbew BY matnr bwkey.
+    ENDIF.
+
+***    SELECT matnr,werks,lgort, kalab
+***      FROM mska
+***      INTO TABLE @DATA(it_mska)
+***      FOR ALL ENTRIES IN @it_marc
+***      WHERE matnr = @it_marc-matnr
+***      AND werks = @it_marc-werks ."AND lgort IN @s_lgort .
+
+    SELECT key1, key2, key3, key4, key5, key6, matnr,
+           stock_qty, year_budat,month_budat, lgort_sid, bwart, budat
+       FROM matdoc
+       INTO TABLE @DATA(it_matdoc)
+       FOR ALL ENTRIES IN @it_marc
+       WHERE matnr = @it_marc-matnr
+       AND  werks = @it_marc-werks
+       AND lgort IN @s_lgort
+       AND ( bwart = '601' OR bwart = '602' ) .
+
+  ENDIF.
+
+  SELECT
+    lips~matnr,
+    likp~vbeln,
+    lips~werks,
+    lips~lfimg,
+    lips~lgort,
+    lips~kzbew,
+    lips~gmcontrol,
+    likp~status
+    FROM likp AS likp
+    INNER JOIN lips AS lips
+      ON likp~vbeln = lips~vbeln
+    WHERE lips~matnr IN @s_matnr
+    AND lips~lgort IN @s_lgort
+    AND lips~werks IN @s_plant
+*    AND kzbew = 'B'
+    AND lips~pstyv = 'ELN'
+    AND lips~wbsta NE 'C'
+    AND likp~status IN ( 'OPEN' , 'SHIPPED' )
+    INTO TABLE @DATA(it_lips1).
+
+  IF it_lips1 IS NOT INITIAL.
+    SORT it_lips1 BY matnr lgort status.
+  ENDIF.
+
+  DATA: gr_table TYPE REF TO   data,
+        gt_line  TYPE REF TO   data.
+
+  FIELD-SYMBOLS: <gt_table> TYPE STANDARD TABLE,
+                 <gt_tline> TYPE any.
+
+  cl_salv_bs_runtime_info=>set( EXPORTING display  = abap_false
+                                          metadata = abap_false
+                                          data     = abap_true ).
+
+  SUBMIT rm06em00 EXPORTING LIST TO MEMORY WITH em_matnr IN s_matnr
+                                           WITH em_werks IN s_plant
+                                           WITH listu = 'ALV'  AND RETURN .
+  REFRESH it_me2m[].
+  TRY.
+      cl_salv_bs_runtime_info=>get_data_ref( IMPORTING r_data      = gr_table ).
+      ASSIGN gr_table->* TO <gt_table>.
+
+    CATCH cx_salv_bs_sc_runtime_info.
+*      MESSAGE: TEXT-m01 TYPE 'S' DISPLAY LIKE 'E'.
+*      LEAVE LIST-PROCESSING.
+  ENDTRY.
+
+  cl_salv_bs_runtime_info=>clear_all( ).
+
+  IF gr_table IS NOT INITIAL.
+    MOVE-CORRESPONDING <gt_table> TO it_me2m.
+    CLEAR : <gt_table> , gr_table  .
+  ENDIF.
+
+***  SORT it_me2m BY ematn werks.
+  IF it_me2m IS NOT INITIAL.
+    SORT it_me2m BY ematn werks lgort.
+  ENDIF.
+
+  TYPES : BEGIN OF ts_mb52,
+            werks TYPE mard-werks,
+            lgort TYPE mard-lgort,
+            matnr TYPE mard-matnr,
+            groes TYPE mara-groes,
+            maktx TYPE makt-maktx,
+            labst TYPE mard-labst,
+            brgew TYPE mara-brgew,
+            lgobe TYPE t001l-lgobe,
+          END OF ts_mb52.
+
+  DATA: gt_mb52 TYPE TABLE OF ts_mb52,
+        gw_mb52 TYPE ts_mb52,
+        go_data TYPE REF TO data.
+
+  FIELD-SYMBOLS:
+    <gt_data>   TYPE ANY TABLE,
+    <gt_table2> TYPE STANDARD TABLE,
+    <gt_tline2> TYPE any.
+
+  cl_salv_bs_runtime_info=>clear_all( ).
+  CLEAR : gt_mb52[].
+
+  cl_salv_bs_runtime_info=>set( EXPORTING display  = abap_false
+                                          metadata = abap_false
+                                          data     = abap_true ).
+
+
+  SUBMIT rm07mlbs   WITH matnr IN s_matnr
+                    WITH werks IN s_plant
+                    WITH lgort IN s_lgort
+                    WITH xmchb  EQ ' '
+                    WITH nozero EQ abap_true
+                    WITH pa_flt EQ abap_true
+                    WITH pa_hsq EQ abap_false
+                    EXPORTING LIST TO MEMORY AND RETURN.
+
+
+  TRY.
+      cl_salv_bs_runtime_info=>get_data_ref(
+        IMPORTING r_data = go_data ).
+      ASSIGN go_data->* TO <gt_data>.
+
+      IF <gt_data> IS ASSIGNED.
+        LOOP AT <gt_data> ASSIGNING FIELD-SYMBOL(<fs_data>).
+          MOVE-CORRESPONDING <fs_data> TO gw_mb52.
+          APPEND gw_mb52 TO gt_mb52.
+          CLEAR: gw_mb52.
+        ENDLOOP.
+      ELSE.
+*          IMSG = 'No Data Found'.
+      ENDIF.
+
+    CATCH cx_salv_bs_sc_runtime_info ##NO_HANDLER.
+*        IMSG = 'No Data Found'.
+
+  ENDTRY.
+
+
+*    added by Ashish Bhagat 20.11.2023 for On hand qty, allocated qty & available qty
+  cl_salv_bs_runtime_info=>clear_all( ).
+  cl_salv_bs_runtime_info=>set(
+        EXPORTING display  = abap_false
+                  metadata = abap_false
+                  data     = abap_true
+                  ).
+
+  SUBMIT zya_sdr_material_availabilit  WITH  s_matnr  IN  s_matnr
+                                       WITH s_werks  IN  s_plant
+                                       WITH s_lgort  IN  s_lgort
+                                       AND RETURN EXPORTING LIST TO MEMORY  .
+
+  REFRESH it_sdr_mat[].
+
+  TRY.
+
+      cl_salv_bs_runtime_info=>get_data_ref(
+        IMPORTING r_data      = gr_table2 ).
+      ASSIGN gr_table2->* TO <gt_table2>.
+
+    CATCH cx_salv_bs_sc_runtime_info.
+
+  ENDTRY.
+  cl_salv_bs_runtime_info=>clear_all( ).
+  IF gr_table2 IS NOT INITIAL.
+    MOVE-CORRESPONDING <gt_table2> TO it_sdr_mat.
+    CLEAR : <gt_table2> , gr_table2  .
+  ENDIF.
+*  ended by Ashish Bhagat 20.11.2023 for On hand qty, allocated qty & available qty
+
+  IF it_mard IS NOT INITIAL.
+    SELECT *
+      FROM mara
+      INTO TABLE @DATA(it_mara1)
+      FOR ALL ENTRIES IN @it_mard
+      WHERE matnr = @it_mard-matnr.
+  ENDIF.
+
+
+  SORT it_mard BY matnr.
+  SORT it_mara1 BY matnr.
+  SORT it_mara BY matnr.
+
+  DATA : aloc_qty  TYPE atpds-qty_c,
+         lv_matnr1 TYPE cuobn.
+
+* Performance issue changes
+
+  IF it_mard IS NOT INITIAL.
+    MOVE-CORRESPONDING it_mard TO it_objek.
+
+    CLEAR: lv_atinn.
+    CALL FUNCTION 'CONVERSION_EXIT_ATINN_INPUT'
+      EXPORTING
+        input  = 'ZYOH_ITEMCRRE'
+      IMPORTING
+        output = lv_atinn.
+
+    SELECT * FROM ausp
+      INTO TABLE it_ausp
+      FOR ALL ENTRIES IN it_objek
+      WHERE objek EQ it_objek-matnr
+      AND atinn EQ lv_atinn.
+
+    IF it_ausp IS NOT INITIAL.
+      SORT it_ausp BY objek atinn.
+    ENDIF.
+
+    CLEAR: lv_atinn3  .
+    CALL FUNCTION 'CONVERSION_EXIT_ATINN_INPUT'
+      EXPORTING
+        input  = 'ZYOH_ISTAT'
+      IMPORTING
+        output = lv_atinn3.
+
+    SELECT objek,  atinn ,atwrt, dec_value_from
+      FROM ausp
+      INTO TABLE @DATA(it_ausp2)
+      FOR ALL ENTRIES IN @it_objek
+      WHERE objek = @it_objek-matnr
+      AND  atinn = @lv_atinn3 .
+
+    IF it_ausp IS NOT INITIAL.
+      SORT it_ausp2 BY objek atinn.
+    ENDIF.
+  ENDIF.
+
+
+  LOOP AT it_mard INTO DATA(wa_mard).
+
+    wa_final-matnr = wa_mard-matnr.
+    wa_final-werks = wa_mard-werks.
+    lv_matnr1 = wa_mard-matnr.
+
+    READ TABLE it_ausp INTO wa_ausp WITH KEY objek = lv_matnr1
+                                             atinn = lv_atinn  BINARY SEARCH.
+    IF sy-subrc EQ 0.
+      wa_final-l_matnr = wa_ausp-atwrt.
+    ENDIF.
+
+    READ TABLE it_mara1 INTO DATA(wa_mara1) WITH KEY matnr = wa_mard-matnr BINARY SEARCH.
+    IF sy-subrc EQ 0.
+      wa_final-ferth = wa_mara1-ferth.
+    ENDIF.
+
+    READ TABLE gt_mb52 INTO gw_mb52  WITH KEY matnr = wa_final-matnr werks = wa_final-werks lgort = wa_mard-lgort. "++201123
+    IF sy-subrc = 0.
+      wa_final-labst = gw_mb52-labst.
+*aloc_qty = wa_dat-so_cnfr_qty + wa_dat-sto_cnfr_qty.
+*  wa_final-avl_qty =  wa_final-stock - aloc_qty .
+    ENDIF.
+    CLEAR : gw_mb52 .
+
+*added by ashish on 20.11.2023 for on_hand
+    CLEAR: lv_allocated.
+    READ TABLE  it_sdr_mat INTO wa_sdr_mat WITH KEY matnr = wa_mard-matnr
+                                                    werks = wa_mard-werks
+                                                    lgort = wa_mard-lgort.
+    IF sy-subrc = 0.
+      lv_allocated = wa_sdr_mat-so_cnfr_qty + wa_sdr_mat-sto_cnfr_qty.
+    ENDIF.
+
+    IF lv_allocated < 0 .
+      lv_allocated = lv_allocated * -1.
+    ENDIF.
+
+    wa_final-avl_qty = wa_final-labst - lv_allocated.
+
+    IF wa_final-avl_qty < 0 .
+      wa_final-avl_qty = wa_final-avl_qty * -1.
+    ENDIF.
+*ended by ashish on 20.11.2023 for on_hand
+
+    READ TABLE it_mara INTO DATA(wa_mara) WITH KEY matnr = wa_final-matnr  BINARY SEARCH.
+    IF sy-subrc = 0.
+      wa_final-groes = wa_mara-groes.
+      READ TABLE it_twewt INTO DATA(wa_twewt) WITH KEY extwg = wa_mara-extwg.
+      IF sy-subrc = 0.
+        wa_final-extwg  = wa_twewt-ewbez.
+      ENDIF.
+      wa_final-netgew = wa_mara-ntgew / 1000.
+    ENDIF.
+
+    READ TABLE it_makt INTO DATA(wa_makt) WITH KEY matnr = wa_final-matnr
+                                                   spras = 'Z'.
+    IF sy-subrc = 0.
+      wa_final-maktx = wa_makt-maktx.
+    ELSE.
+      CLEAR wa_makt.
+      READ TABLE it_makt INTO wa_makt WITH KEY matnr = wa_final-matnr
+                                                 spras = 'E'.
+      IF sy-subrc = 0.
+        wa_final-maktx = wa_makt-maktx.
+      ENDIF.
+    ENDIF.
+
+    READ TABLE it_mvke INTO DATA(wa_mvke)  WITH KEY matnr = wa_final-matnr BINARY SEARCH .
+    IF sy-subrc = 0.
+      READ TABLE it_tvm1t INTO DATA(wa_tvm1t) WITH KEY mvgr1 = wa_mvke-mvgr1.
+      IF sy-subrc = 0.
+        wa_final-mvgr1 = wa_tvm1t-bezei.
+      ENDIF.
+      READ TABLE it_tvm2t INTO DATA(wa_tvm2t) WITH KEY mvgr2 = wa_mvke-mvgr2.
+      IF sy-subrc = 0.
+        wa_final-mvgr3 = wa_tvm2t-bezei.
+      ENDIF.
+    ENDIF.
+
+    READ TABLE it_mbew INTO DATA(wa_mbew) WITH KEY matnr = wa_final-matnr bwkey = wa_final-werks  BINARY SEARCH.
+    IF sy-subrc = 0.
+      wa_final-verpr = wa_mbew-verpr.
+    ENDIF.
+
+    wa_final-lgort = wa_mard-lgort.
+*    READ TABLE it_t001l INTO DATA(wa_t001l) WITH  KEY lgort =  wa_final-lgort .  --BY ASHISH BHAGAT ON 16.04.2024 REQ BY MAHADEV
+*    IF sy-subrc = 0.
+*      wa_final-lgobe = wa_t001l-lgobe.
+*    ENDIF.
+
+    READ TABLE it_me2m INTO DATA(wa_me3m1) WITH KEY ematn = wa_final-matnr
+                                                    werks = wa_final-werks
+                                                    lgort = wa_final-lgort BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_me2m INTO DATA(wa_me3m) FROM sy-tabix.
+        IF ( wa_me3m-ematn NE wa_me3m1-ematn ) OR
+           ( wa_me3m-werks NE wa_me3m1-werks ) OR
+           ( wa_me3m-lgort NE wa_me3m1-lgort ) .
+          EXIT.
+        ENDIF.
+
+        ord_tot = ord_tot + wa_me3m-mglief.
+        CLEAR: wa_me3m.
+      ENDLOOP.
+    ENDIF.
+
+    wa_final-ord_qty = ord_tot.
+    CLEAR ord_tot.
+
+    READ TABLE it_ausp2 INTO DATA(wa_ausp2) WITH KEY objek = wa_mard-matnr
+                                                   atinn = lv_atinn3  BINARY SEARCH.
+    IF sy-subrc EQ 0.
+      CLEAR: lv_atwrt.
+      lv_atwrt = wa_ausp2-atwrt.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = lv_atwrt
+        IMPORTING
+          output = lv_atwrt.
+
+      CASE lv_atwrt.
+        WHEN '1'.
+          wa_final-atwrt = 'PLANNING' .
+        WHEN '2'.
+          wa_final-atwrt = 'DISCONTINUED ' .
+        WHEN '3'.
+          wa_final-atwrt = 'ACTIVE' .
+        WHEN '4'.
+          wa_final-atwrt = 'OTHER' .
+        WHEN '5'.
+          wa_final-atwrt = 'BLEMISH' .
+        WHEN '6'.
+          wa_final-atwrt = 'SPECIAL ORDER' .
+        WHEN '7'.
+          wa_final-atwrt = 'NON-US MARKET' .
+        WHEN '8'.
+          wa_final-atwrt = 'REDEV' .
+      ENDCASE.
+    ENDIF.
+
+    READ TABLE it_lips1 INTO DATA(wa_lips_1) WITH KEY matnr = wa_final-matnr
+                                                      lgort = wa_final-lgort
+                                                      status = 'SHIPPED' BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_lips1 INTO DATA(wa_lips) FROM sy-tabix.
+        IF ( wa_lips_1-matnr NE wa_lips-matnr ) OR
+           ( wa_lips_1-lgort NE wa_lips-lgort ) OR
+           ( wa_lips_1-status NE wa_lips-status ) .
+          EXIT.
+        ENDIF.
+
+        lf_tot = lf_tot + wa_lips-lfimg.
+        CLEAR: wa_lips.
+      ENDLOOP.
+    ENDIF.
+    wa_final-lfimg = lf_tot.
+    CLEAR lf_tot.
+
+    READ TABLE it_lips1 INTO DATA(wa_lips_2) WITH KEY matnr = wa_final-matnr
+                                                      lgort = wa_final-lgort
+                                                      status = 'OPEN' BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_lips1 INTO DATA(wa_lips1) FROM sy-tabix.
+        IF ( wa_lips1-matnr NE wa_lips_2-matnr ) OR
+           ( wa_lips1-lgort NE wa_lips_2-lgort ) OR
+           ( wa_lips1-status NE wa_lips_2-status ) .
+          EXIT.
+        ENDIF.
+
+        lf_tot1 = lf_tot1 + wa_lips1-lfimg.
+        CLEAR: wa_lips1.
+      ENDLOOP.
+    ENDIF.
+    wa_final-lfimg1 = lf_tot1.
+    CLEAR lf_tot1.
+
+    wa_final-qty_ord = wa_final-ord_qty - wa_final-lfimg - wa_final-lfimg1.
+
+    " last 3 months
+    CALL FUNCTION 'OIL_LAST_DAY_OF_PREVIOUS_MONTH'
+      EXPORTING
+        i_date_old = sy-datum
+      IMPORTING
+        e_date_new = prev_dat.
+
+    " 3 months
+    CALL FUNCTION 'CRM_MONTH_PLUS_DETERMINE'
+      EXPORTING
+        months  = -3
+        olddate = prev_dat
+      IMPORTING
+        newdate = month_3.
+
+    month_3 = month_3 + 1.
+
+
+    SORT it_matdoc BY matnr lgort_sid." budat.          "########IMPORTANT STATEMENT DON'T CHANGE ++ASHISH BHAGAT
+
+    READ TABLE it_matdoc INTO DATA(wa_mat2) WITH KEY matnr = wa_final-matnr
+                                                   lgort_sid = wa_final-lgort BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_matdoc INTO DATA(wa_mat3) FROM sy-tabix.
+        IF ( wa_mat2-matnr NE wa_mat3-matnr ) OR
+           ( wa_mat2-lgort_sid NE wa_mat3-lgort_sid ).
+          EXIT.
+        ENDIF.
+
+        IF wa_mat3-budat BETWEEN month_3 AND prev_dat.
+          stot_qty3 = stot_qty3 + wa_mat3-stock_qty.
+        ENDIF.
+        CLEAR wa_mat3.
+      ENDLOOP.
+    ENDIF.
+
+    IF  stot_qty3 LT 0.
+      wa_final-stock_qty3    = stot_qty3 * -1 .
+    ELSE.
+      wa_final-stock_qty3    = stot_qty3.
+    ENDIF.
+    CLEAR stot_qty3.
+
+    " 6 months
+    CALL FUNCTION 'CRM_MONTH_PLUS_DETERMINE'
+      EXPORTING
+        months  = -6
+        olddate = prev_dat
+      IMPORTING
+        newdate = month_6.
+    month_6 = month_6 + 1.
+
+    READ TABLE it_matdoc INTO DATA(wa_mat5) WITH KEY matnr = wa_final-matnr
+                                                     lgort_sid = wa_final-lgort BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_matdoc INTO DATA(wa_mat6) FROM sy-tabix.
+        IF ( wa_mat5-matnr NE wa_mat6-matnr ) OR
+           ( wa_mat5-lgort_sid NE wa_mat6-lgort_sid ).
+          EXIT.
+        ENDIF.
+
+        IF wa_mat6-budat BETWEEN month_6 AND prev_dat.
+          wa_mat6-stock_qty = wa_mat6-stock_qty * -1.
+          stot_qty6 = stot_qty6 + wa_mat6-stock_qty.
+        ENDIF.
+        CLEAR wa_mat6.
+      ENDLOOP.
+    ENDIF.
+
+    wa_final-stock_qty6    = stot_qty6 .
+    CLEAR stot_qty6.
+
+    " 9 months
+    CALL FUNCTION 'CRM_MONTH_PLUS_DETERMINE'
+      EXPORTING
+        months  = -9
+        olddate = prev_dat
+      IMPORTING
+        newdate = month_9.
+    month_9 = month_9 + 1.
+
+
+    READ TABLE it_matdoc INTO DATA(wa_mat8) WITH KEY matnr = wa_final-matnr
+                                                     lgort_sid = wa_final-lgort BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_matdoc INTO DATA(wa_mat9) FROM sy-tabix.
+        IF ( wa_mat8-matnr NE wa_mat9-matnr ) OR
+           ( wa_mat8-lgort_sid NE wa_mat9-lgort_sid ).
+          EXIT.
+        ENDIF.
+
+        IF wa_mat9-budat BETWEEN month_9 AND prev_dat.
+          stot_qty9 = stot_qty9 + wa_mat9-stock_qty.
+        ENDIF.
+        CLEAR wa_mat9.
+      ENDLOOP.
+    ENDIF.
+
+    IF  stot_qty9 LT 0.
+      wa_final-stock_qty9    = stot_qty9 * -1 .
+      CLEAR stot_qty9.
+    ELSE.
+      wa_final-stock_qty9    = stot_qty9.
+    ENDIF.
+
+    " 12 months
+    CALL FUNCTION 'CRM_MONTH_PLUS_DETERMINE'
+      EXPORTING
+        months  = -12
+        olddate = prev_dat
+      IMPORTING
+        newdate = month_12.
+    month_12 = month_12 + 1.
+
+
+    READ TABLE it_matdoc INTO DATA(wa_mat11) WITH KEY matnr = wa_final-matnr
+                                                         lgort_sid = wa_final-lgort BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_matdoc INTO DATA(wa_mat12) FROM sy-tabix.
+        IF ( wa_mat11-matnr NE wa_mat12-matnr ) OR
+           ( wa_mat11-lgort_sid NE wa_mat12-lgort_sid ).
+          EXIT.
+        ENDIF.
+
+        IF wa_mat12-budat BETWEEN month_12 AND prev_dat.
+          wa_mat12-stock_qty = wa_mat12-stock_qty * -1.
+          stot_qty12 = stot_qty12 + wa_mat12-stock_qty.
+        ENDIF.
+        CLEAR wa_mat12.
+      ENDLOOP.
+    ENDIF.
+
+    wa_final-stock_qty12    = stot_qty12 .
+    CLEAR stot_qty12.
+
+    " 1 months
+    CALL FUNCTION 'CRM_MONTH_PLUS_DETERMINE'
+      EXPORTING
+        months  = -1
+        olddate = prev_dat
+      IMPORTING
+        newdate = month_1.
+    month_1 = month_1 + 1.
+
+    READ TABLE it_matdoc INTO DATA(wa_mat0) WITH KEY matnr = wa_final-matnr
+                                                     lgort_sid = wa_final-lgort BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_matdoc INTO DATA(wa_mat1) FROM sy-tabix.
+        IF ( wa_mat0-matnr NE wa_mat1-matnr ) OR
+           ( wa_mat0-lgort_sid NE wa_mat1-lgort_sid ).
+          EXIT.
+        ENDIF.
+
+        IF wa_mat1-budat BETWEEN month_1 AND prev_dat.
+          wa_mat1-stock_qty = wa_mat1-stock_qty * -1.
+          stot_qty1 = stot_qty1 + wa_mat1-stock_qty.
+        ENDIF.
+        CLEAR wa_mat1.
+      ENDLOOP.
+    ENDIF.
+
+    wa_final-stock_qty1    = stot_qty1 .
+    CLEAR stot_qty1.
+    curr_dat = prev_dat + 1.
+
+
+    READ TABLE it_matdoc INTO DATA(wa_mat) WITH KEY matnr = wa_final-matnr
+                                                         lgort_sid = wa_final-lgort BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT it_matdoc INTO DATA(wa_mats) FROM sy-tabix.
+        IF ( wa_mat-matnr NE wa_mats-matnr ) OR
+           ( wa_mat-lgort_sid NE wa_mats-lgort_sid ).
+          EXIT.
+        ENDIF.
+
+        IF wa_mats-budat BETWEEN curr_dat AND sy-datum.
+          wa_mats-stock_qty = wa_mats-stock_qty * -1.
+          stot_qty = stot_qty + wa_mats-stock_qty.
+        ENDIF.
+        CLEAR wa_mats.
+      ENDLOOP.
+    ENDIF.
+
+    wa_final-stock_qty    = stot_qty .
+    CLEAR : stot_qty,curr_dat.
+
+
+    APPEND wa_final TO it_final.
+
+    CLEAR : wa_makt,wa_mvke,wa_me2m,wa_mbew, wa_mara1,lv_matnr1,wa_ausp,
+             wa_mard,wa_mara,wa_lips1,wa_lips,wa_final.
+  ENDLOOP.
+
+  REFRESH: it_twewt,it_tvm2t,it_tvm1t, it_mvke,it_me2m,
+            it_mbew,it_matdoc,it_mard,it_marc,it_mara,it_makt,it_lips1,
+            it_allocvalueschar.
+
+  IF it_final IS NOT INITIAL.
+    SORT it_final BY werks.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form push_to_al11
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM push_to_al11 .
+
+  TYPES: BEGIN OF t_file,
+           text(1000) TYPE c,
+*           text TYPE string,
+         END OF t_file.
+
+  DATA:lv_file       TYPE c LENGTH 200,
+       lv_csv_format TYPE truxs_t_text_data,
+       wa_csv_format LIKE LINE OF lv_csv_format.
+
+  DATA: lwa_csv          TYPE t_file,
+        warehouse        TYPE char10,
+        char_ntgew       TYPE char12,
+        char_verpr       TYPE char12,
+        char_labst       TYPE char11,
+        char_avl_qty     TYPE char11,
+        char_ord_qty     TYPE char11,
+        char_lfimg       TYPE char11,
+        char_lfimg1      TYPE char11,
+        char_qty_ord     TYPE char11,
+        char_stock_qty   TYPE char11,
+        char_stock_qty1  TYPE char11,
+        char_stock_qty3  TYPE char11,
+        char_stock_qty6  TYPE char11,
+        char_stock_qty9  TYPE char11,
+        char_stock_qty12 TYPE char11,
+        gt_files         TYPE TABLE OF epsfili,
+        gw_files         TYPE epsfili,
+        filepath         TYPE epsf-epsdirnam,
+        filestamp        TYPE char200,
+        char_timestamp   TYPE char15,
+*          lwa_csv        TYPE t_file,
+        lh_csv           TYPE t_file,
+        l_netwr          TYPE char17,
+        l_netwr1         TYPE char17,
+        lv_src           TYPE char100,
+        lv_dst           TYPE char100.
+
+  GET TIME STAMP FIELD  DATA(timestamp).
+  WRITE timestamp TO char_timestamp.
+
+  CLEAR filepath.
+
+*  SELECT  * FROM zbg_filepath INTO TABLE @DATA(it_path) FOR ALL ENTRIES IN @it_final
+*     WHERE identifier = 'ZYA_MMR049' AND werks = @it_final-werks.
+*
+*  READ TABLE it_path INTO DATA(wa_path) WITH KEY identifier = 'ZYA_MMR049'.
+*  IF sy-subrc = 0.
+*
+*    CONCATENATE wa_path-filepath '/' wa_path-filename '_' filestamp sy-uzeit '.' wa_path-extension INTO lv_file.
+*  ENDIF.
+
+  SELECT * FROM tvarvc INTO TABLE @DATA(it_tvarvc) WHERE name = 'ZYA_MMR_DRP_SALE'.
+  READ TABLE it_tvarvc INTO DATA(wa_tvarvc) INDEX 1.
+  IF sy-subrc = 0.
+
+***""""""" SOA by Snehal M on 19/04/2024 for Archive old file """""""""*
+    filepath = wa_tvarvc-low.
+
+    CALL FUNCTION 'EPS_GET_DIRECTORY_LISTING'
+      EXPORTING
+        dir_name               = filepath
+      TABLES
+        dir_list               = gt_files
+      EXCEPTIONS
+        invalid_eps_subdir     = 1
+        sapgparam_failed       = 2
+        build_directory_failed = 3
+        no_authorization       = 4
+        read_directory_failed  = 5
+        too_many_read_errors   = 6
+        empty_directory_list   = 7
+        OTHERS                 = 8.
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                         WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+
+    DATA(file) = 'Inv_Sales_Analysis_DRP.CSV'.
+
+*    LOOP AT gt_files INTO gw_files WHERE name CP file.
+*    LOOP AT gt_files INTO gw_files WHERE name = file.
+    READ TABLE gt_files INTO gw_files WITH KEY name = file.
+    IF sy-subrc EQ 0.
+
+      CONCATENATE filepath '/' gw_files-name INTO lv_src.
+      CONCATENATE sy-datum(4) sy-datum+6(2) sy-datum+4(2) INTO filestamp.  "++Sbehal M on 23/04/2024
+      CONCATENATE filepath '/' 'Inv_Sales_Analysis_DRP_' filestamp sy-uzeit '.CSV'  INTO lv_dst.
+
+      CALL FUNCTION 'SCMS_FILE_COPY'
+        EXPORTING
+          src_filename = lv_src
+*         SRC_FRONTEND = ' '
+          dst_filename = lv_dst
+*         DST_FRONTEND = ' '
+        EXCEPTIONS
+          read_failed  = 1
+          write_failed = 2
+          OTHERS       = 3.
+
+      IF sy-subrc = 0.
+
+        CALL FUNCTION 'SCMS_FILE_DELETE'
+          EXPORTING
+            filename      = lv_src
+*           FRONTEND      = ' '
+          EXCEPTIONS
+            not_found     = 1
+            name_too_long = 2
+            OTHERS        = 3.
+        IF sy-subrc <> 0.
+        ENDIF.
+      ENDIF.
+
+      CLEAR :gw_files,lv_src,lv_dst.
+    ENDIF.
+*    ENDLOOP.
+***""""""" EOA by Snehal M on 19/04/2024 for Archive old file """""""""*
+
+*    CONCATENATE sy-datum(4) '-' sy-datum+6(2)'-' sy-datum+4(2) INTO filestamp.
+*    CONCATENATE wa_tvarvc-low '/Sales DRP_' filestamp sy-uzeit '.' wa_tvarvc-high INTO lv_file.
+    CONCATENATE wa_tvarvc-low '/Inv_Sales_Analysis_DRP' '.' wa_tvarvc-high INTO lv_file.
+*  ENDIF.
+    IF it_final[] IS NOT INITIAL.
+      OPEN DATASET lv_file FOR OUTPUT IN TEXT MODE ENCODING DEFAULT.
+
+      CONCATENATE 'Material No'
+                  'Nav legacy code'
+                  'Parent Code'
+                  'Size'
+                  'Material Description'
+                  'Brand'
+                  'Category'
+                  'Model'
+                  'UnitCost'
+                  'Unit Tons'
+                  'Item Status'
+                  'Plant'
+                  'Storage Location'
+                  'On-Hand Quantity'
+                  'Available Qty'
+                  'On P.O.'
+                  'P.O. In Transit'
+                  'Open ASN Qty'
+                  'Qty. on Back Order'
+                  'Last 3 Months'
+                  'Last 6 Months'
+                  'Last 9 Months'
+                  'Last 12 Months'
+                  'Last Month Sales'
+                  'Current Month'
+*                  'Inventory as on'
+
+                   INTO  lh_csv SEPARATED BY ',' .
+
+      TRANSFER lh_csv TO lv_file.
+
+
+*      ENDIF.
+      LOOP  AT it_final INTO DATA(lwa_data).
+        char_ntgew = lwa_data-netgew.
+        CONDENSE char_ntgew.
+        char_verpr = lwa_data-verpr  .
+        CONDENSE char_verpr.
+        char_labst = lwa_data-labst.
+*        char_labst = lwa_data-stock .
+        CONDENSE char_labst.
+        char_avl_qty = lwa_data-avl_qty .
+        CONDENSE char_avl_qty.
+        char_ord_qty = lwa_data-ord_qty.
+        CONDENSE char_ord_qty.
+        char_lfimg = lwa_data-lfimg .
+        CONDENSE char_lfimg.
+        char_lfimg1 = lwa_data-lfimg1 .
+        CONDENSE char_lfimg1.
+        char_qty_ord = lwa_data-qty_ord .
+        CONDENSE char_qty_ord.
+        char_stock_qty = lwa_data-stock_qty .
+        CONDENSE char_stock_qty.
+        char_stock_qty1 = lwa_data-stock_qty1 .
+        CONDENSE char_stock_qty1.
+        char_stock_qty3 = lwa_data-stock_qty3 .
+        CONDENSE char_stock_qty3.
+        char_stock_qty6 = lwa_data-stock_qty6 .
+        CONDENSE char_stock_qty6.
+        char_stock_qty9 = lwa_data-stock_qty9 .
+        CONDENSE char_stock_qty9.
+        char_stock_qty12 =  lwa_data-stock_qty12 .
+        CONDENSE char_stock_qty12.
+
+        REPLACE ALL OCCURRENCES OF ',' IN lwa_data-groes WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN lwa_data-maktx WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN lwa_data-mvgr1 WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN lwa_data-mvgr3 WITH ';'.
+        REPLACE ALL OCCURRENCES OF ',' IN lwa_data-extwg WITH ';'.
+
+        CONCATENATE
+                   lwa_data-matnr
+                   lwa_data-l_matnr
+                   lwa_data-ferth
+                   lwa_data-groes
+                   lwa_data-maktx
+                   lwa_data-mvgr1
+                   lwa_data-mvgr3
+                   lwa_data-extwg
+                   char_verpr
+                   char_ntgew
+                   lwa_data-atwrt
+                   lwa_data-werks
+*                   lwa_data-lgobe
+                   lwa_data-lgort        "++BY ASHISH BHAGAT ON 16.04.2024 REQ BY MAHADEV
+                   char_labst
+                   char_avl_qty
+                   char_ord_qty
+                   char_lfimg
+                   char_lfimg1
+                   char_qty_ord
+                   char_stock_qty3
+                   char_stock_qty6
+                   char_stock_qty9
+                   char_stock_qty12
+                   char_stock_qty1
+                   char_stock_qty
+*                   char_labst
+
+                  INTO lwa_csv SEPARATED BY ','.
+
+        TRANSFER lwa_csv TO lv_file.
+
+        CLEAR: lwa_csv.    "++BY ASHISH BHAGAT ON 11.04.2024 REQ BY MAHADEV
+        CLEAR : char_stock_qty3,
+                char_stock_qty6,
+                char_stock_qty9,
+                char_stock_qty12 ,
+                char_stock_qty ,
+                char_stock_qty1,
+                char_lfimg,
+                char_lfimg1,
+                char_qty_ord,
+                char_labst,
+                char_avl_qty,
+                char_ord_qty,
+                char_verpr,
+                char_ntgew,
+                lwa_data.
+      ENDLOOP.
+      CLOSE DATASET lv_file.
+      WAIT UP TO 1 SECONDS.
+      MESSAGE 'File Stored in AL11' TYPE 'S'.
+
+    ELSE.
+      MESSAGE 'No Data Found' TYPE 'S' DISPLAY LIKE 'E'.    "++BY ASHISH ON 11.04.2024
+    ENDIF.
+  ELSE.
+    MESSAGE 'File Path not found' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+ENDFORM.
