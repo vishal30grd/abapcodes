@@ -1,0 +1,515 @@
+TABLES: mara, marc, mvke, mard, ausp.
+
+TYPES: BEGIN OF ty_final,
+         mtart          TYPE mara-mtart,
+         mbrsh          TYPE mara-mbrsh,
+         werks          TYPE marc-werks,
+         lgort          TYPE mard-lgort,
+         vkorg          TYPE mvke-vkorg,
+         vtweg          TYPE mvke-vtweg,
+         matnr          TYPE mara-matnr,
+         maktx          TYPE makt-maktx,
+         meins          TYPE mara-meins,
+         matkl          TYPE mara-matkl,
+         extwg          TYPE mara-extwg,
+         zzpress_group  TYPE mara-zzpress_group,
+         brgew          TYPE mara-brgew,
+         ntgew          TYPE mara-ntgew,
+         gewei          TYPE mara-gewei,
+         groes          TYPE mara-groes,
+         ean11          TYPE mara-ean11,
+         numtp          TYPE mara-numtp,
+         ferth          TYPE mara-ferth,
+         spdrt          TYPE mara-spdrt,
+         outdia         TYPE mara-outdia,
+         secwdt         TYPE mara-secwdt,
+         trdpt          TYPE mara-trdpt,
+         rolcir         TYPE mara-rolcir,
+         nonskid        TYPE mara-nonskid,
+         slcc           TYPE mara-slcc,
+         sap_psi        TYPE mara-sap_psi,
+         dlcc           TYPE mara-dlcc,
+         dap_psi        TYPE mara-dap_psi,
+         rpm            TYPE mara-rpm,
+         slr            TYPE mara-slr,
+         vendor_no      TYPE mara-vendor_no,
+         dotcode        TYPE mara-dotcode,
+         zeifo          TYPE mara-zeifo,
+         formt          TYPE mara-formt,
+         msbookpartno   TYPE mara-msbookpartno,
+         zeivr          TYPE mara-zeivr,
+         wrkst          TYPE mara-wrkst,
+         vmsta          TYPE mvke-vmsta,
+         vmstd          TYPE mvke-vmstd,
+         spart          TYPE mara-spart,
+         taxm1          TYPE mlan-taxm1,
+         kondm          TYPE mvke-kondm,
+         ktgrm          TYPE mvke-ktgrm,
+         versg          TYPE mvke-versg,
+         mtpos_mara     TYPE mara-mtpos_mara,
+         mtpos          TYPE mvke-mtpos,
+         mvgr2          TYPE mvke-mvgr2,                            " bezei2        TYPE tvm2t-bezei,     "mvke-mvgr2,
+         prodh          TYPE mvke-prodh,
+         mvgr1          TYPE mvke-mvgr1,                            " bezei1        TYPE tvm1t-bezei,     "mvke-mvgr1,
+         mvgr4          TYPE mvke-mvgr4,                            " bezei4        TYPE tvm4t-bezei,     "mvke-mvgr4,
+         mvgr5          TYPE mvke-mvgr5,                            " bezei5        TYPE tvm5t-bezei,     "mvke-mvgr5,
+         mvgr3          TYPE mvke-mvgr3,                            " bezei3        TYPE tvm3t-bezei,     "mvke-mvgr3,
+         mfrgr          TYPE marc-mfrgr,
+         tragr          TYPE mara-tragr,
+         ladgr          TYPE marc-ladgr,
+         prctr          TYPE marc-prctr,
+         steuc          TYPE marc-steuc,
+         casnr          TYPE marc-casnr,
+         gpnum          TYPE marc-gpnum,
+         herkl          TYPE marc-herkl,
+         ekgrp          TYPE marc-ekgrp,
+         mmsta          TYPE marc-mmsta,
+         sernp          TYPE marc-sernp,
+         maabc          TYPE marc-maabc,
+         dismm          TYPE marc-dismm,
+         minbe          TYPE marc-minbe,
+         dispo          TYPE marc-dispo,
+         disls          TYPE marc-disls,
+         ausss          TYPE marc-ausss,
+         bstma          TYPE marc-bstma,
+         mabst          TYPE marc-mabst,
+         bstrf          TYPE marc-bstrf,
+         beskz          TYPE marc-beskz,
+         lgpro          TYPE marc-lgpro,
+         rgekz          TYPE marc-rgekz,
+         fhori          TYPE marc-fhori,
+         perkz          TYPE marc-perkz,
+         strgr          TYPE marc-strgr,
+         mtvfp          TYPE marc-mtvfp,
+         miskz          TYPE marc-miskz,
+         fevor          TYPE marc-fevor,
+         sfcpf          TYPE marc-sfcpf,
+         mlast          TYPE ckmlhd-mlast,
+         vprsv          TYPE mbew-vprsv,
+         peinh          TYPE mbew-peinh,
+         bklas          TYPE mbew-bklas,
+         ekalr          TYPE mbew-ekalr,
+         hkmat          TYPE mbew-hkmat,
+         kosgr          TYPE mbew-kosgr,
+         awsls          TYPE marc-awsls,
+         ernam          TYPE mara-ernam,
+         ersda          TYPE mara-ersda,
+         laeda          TYPE mara-laeda,
+
+       END OF ty_final.
+
+
+DATA: it_final    TYPE TABLE OF ty_final,
+      wa_final    TYPE ty_final,
+      it_fieldcat TYPE slis_t_fieldcat_alv,
+      wa_fieldcat TYPE slis_fieldcat_alv,
+      wa_layout   TYPE slis_layout_alv.
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_MATERIAL_MASTER_R_S01
+*&---------------------------------------------------------------------*
+
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+  SELECT-OPTIONS: s_matnr   FOR mara-matnr,
+                  s_werks   FOR marc-werks,
+                  s_mtart   FOR mara-mtart,
+                  s_matkl   FOR mara-matkl,
+                  s_ernam   FOR mara-ernam.
+SELECTION-SCREEN: END OF BLOCK b1.
+
+
+
+SELECTION-SCREEN: BEGIN OF BLOCK b2.
+  SELECTION-SCREEN COMMENT /02(79) TEXT-002.
+  SELECTION-SCREEN COMMENT /05(79) TEXT-003.
+  SELECTION-SCREEN COMMENT /05(79) TEXT-004.
+  SELECTION-SCREEN COMMENT /05(79) TEXT-005.
+SELECTION-SCREEN: END OF BLOCK b2.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_MATERIAL_MASTER_R_F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form getdata
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM getdata .
+
+  DATA: it_allocvalueschar TYPE bapi1003_alloc_values_char OCCURS 0 WITH HEADER LINE,
+        it_allocvaluescurr TYPE bapi1003_alloc_values_curr OCCURS 0 WITH HEADER LINE,
+        it_allocvaluesnum  TYPE bapi1003_alloc_values_num  OCCURS 0 WITH HEADER LINE,
+        it_return          TYPE  bapiret2 OCCURS 0 WITH HEADER LINE,
+        lv_matnr           TYPE bapi1003_key-object.
+
+  REFRESH: it_final.
+
+  IF s_werks IS INITIAL.
+    s_werks-low = '3101'.
+    s_werks-high = '3999'.
+    s_werks-sign = 'I'.
+    s_werks-option = 'BT'.
+    APPEND s_werks.
+  ENDIF.
+
+***  SELECT matnr, vkorg, vtweg, vmsta, vmstd, kondm, ktgrm, versg, mtpos, prodh, mvgr1, mvgr2, mvgr3, mvgr4, mvgr5
+***       FROM mvke
+***       INTO TABLE @DATA(it_mvke)
+***       WHERE matnr IN @s_matnr
+***       AND vkorg   = '3000'
+***       AND vtweg   = '20'.
+
+  SELECT mr~matnr, mr~mtart, mr~matkl, mr~ernam, mr~mbrsh, mr~meins,  mr~brgew, mr~ntgew, mr~gewei, mr~zzpress_group,
+         mr~groes, mr~ean11, mr~numtp, mr~ferth, mr~spdrt, mr~outdia, mr~secwdt, mr~trdpt, mr~rolcir, mr~nonskid, mr~slcc, mr~sap_psi, mr~dlcc,
+         mr~dap_psi, mr~rpm, mr~slr, mr~vendor_no, mr~dotcode, mr~zeifo, mr~formt,  mr~zeivr, mr~wrkst, mr~spart, mr~taklv, mr~msbookpartno,
+         mr~mtpos_mara, mr~tragr, mr~extwg, mr~ersda, mr~laeda,
+***         mk~vkorg, mk~vtweg, mk~vmsta, mk~vmstd, mk~kondm, mk~ktgrm, mk~versg, mk~mtpos, mk~prodh, mk~mvgr1, mk~mvgr2, mk~mvgr3, mk~mvgr4, mk~mvgr5,
+         mc~werks, mc~steuc, mc~prctr, mc~ladgr, mc~casnr, mc~gpnum, mc~herkl, mc~ekgrp, mc~mmsta, mc~sernp, mc~maabc, mc~dismm,
+         mc~minbe, mc~dispo, mc~disls, mc~ausss, mc~bstma, mc~mabst, mc~bstrf, mc~beskz, mc~lgpro, mc~rgekz,
+         mc~fhori, mc~perkz, mc~strgr, mc~mtvfp, mc~miskz, mc~fevor, mc~sfcpf, mc~awsls, mc~mfrgr
+         FROM mara AS mr
+***         INNER JOIN mvke AS mk
+***         ON mr~matnr = mk~matnr
+         INNER JOIN marc AS mc
+         ON mr~matnr = mc~matnr
+***         FOR ALL ENTRIES IN @it_mvke
+***         WHERE mr~matnr = @it_mvke-matnr
+         WHERE mr~matnr IN @s_matnr
+         AND mr~mtart IN @s_mtart
+         AND mr~matkl IN @s_matkl
+         AND mr~ernam IN @s_ernam
+***         AND mk~vkorg = '3000'
+***         AND mk~vtweg = '20'
+*         AND md~werks IN @s_werks
+         AND mc~werks IN @s_werks
+         INTO TABLE @DATA(it_mara).
+
+
+
+  IF it_mara IS NOT INITIAL.
+***    SORT it_mara ASCENDING BY mtart werks.
+    SORT it_mara ASCENDING BY matnr werks.
+
+    SELECT matnr, werks, lgort
+      FROM mard
+      INTO TABLE @DATA(it_mard)
+      FOR ALL ENTRIES IN @it_mara
+      WHERE matnr = @it_mara-matnr
+      AND werks = @it_mara-werks.
+
+    IF it_mard IS NOT INITIAL.
+      SORT it_mard BY matnr werks.
+    ENDIF.
+
+    SELECT matnr, vkorg, vtweg, vmsta, vmstd, kondm, ktgrm, versg, mtpos, prodh, mvgr1, mvgr2, mvgr3, mvgr4, mvgr5
+      FROM mvke
+      INTO TABLE @DATA(it_mvke)
+      FOR ALL ENTRIES IN @it_mara
+      WHERE matnr = @it_mara-matnr
+      AND vkorg   = '3000'
+      AND vtweg   = '20'.
+
+    IF it_mvke IS NOT INITIAL.
+      SORT it_mvke BY matnr.
+    ENDIF.
+
+    SELECT matnr, maktx, spras
+     FROM makt
+     INTO TABLE @DATA(it_makt)
+     FOR ALL ENTRIES IN @it_mara
+     WHERE matnr = @it_mara-matnr
+     AND spras IN ( 'Z' , 'E' ).
+
+    SELECT matnr, vprsv, peinh, bklas, ekalr, hkmat, kosgr, mlast, bwkey
+      FROM mbew
+      INTO TABLE @DATA(it_mbew)
+      FOR ALL ENTRIES IN @it_mara
+      WHERE matnr = @it_mara-matnr
+      AND bwkey = @it_mara-werks.       "++ on 02.01.2024
+
+    IF it_mbew IS NOT INITIAL.
+      SORT it_mbew BY matnr bwkey.
+    ENDIF.
+
+    SELECT matnr, taxm1, aland
+      FROM mlan
+      INTO TABLE @DATA(it_mlan)
+      FOR ALL ENTRIES IN @it_mara
+      WHERE matnr = @it_mara-matnr
+      AND aland = 'US'.
+
+    IF it_mlan IS NOT INITIAL.
+      SORT it_mlan BY matnr.
+    ENDIF.
+
+    SELECT bwkey, bukrs
+     FROM t001k
+     INTO TABLE @DATA(it_t001k)
+     FOR ALL ENTRIES IN @it_mara
+     WHERE bwkey = @it_mara-werks
+     AND bukrs = '3000'.
+
+    IF it_t001k IS NOT INITIAL.
+      SORT it_t001k BY bwkey.
+    ENDIF.
+
+  ENDIF.
+
+  LOOP AT it_mara INTO DATA(lwa_mara).
+
+    READ TABLE it_t001k INTO DATA(wa_t001k) WITH KEY bwkey = lwa_mara-werks BINARY SEARCH.
+    IF sy-subrc = 0 .
+
+      MOVE-CORRESPONDING lwa_mara TO wa_final.
+
+      READ TABLE it_makt INTO DATA(wa_makt) WITH KEY matnr = lwa_mara-matnr
+                                                     spras = 'Z'.
+      IF sy-subrc = 0.
+        wa_final-maktx       = wa_makt-maktx.
+      ELSE.
+        READ TABLE it_makt INTO DATA(wa_makt2) WITH KEY matnr = lwa_mara-matnr
+                                                        spras = 'E'.
+        IF sy-subrc = 0.
+          wa_final-maktx       = wa_makt2-maktx.
+        ENDIF.
+      ENDIF.
+
+      READ TABLE it_mvke INTO DATA(wa_mvke) WITH KEY matnr = lwa_mara-matnr BINARY SEARCH.
+      IF sy-subrc = 0.
+        MOVE-CORRESPONDING wa_mvke TO wa_final.
+      ENDIF.
+
+      READ TABLE it_mbew INTO DATA(wa_mbew) WITH KEY matnr = lwa_mara-matnr
+                                                     bwkey = lwa_mara-werks BINARY SEARCH.
+      IF sy-subrc = 0.
+        wa_final-vprsv  = wa_mbew-vprsv .
+        wa_final-peinh  = wa_mbew-peinh .
+        wa_final-bklas  = wa_mbew-bklas .
+        wa_final-ekalr  = wa_mbew-ekalr .
+        wa_final-hkmat  = wa_mbew-hkmat .
+        wa_final-kosgr  = wa_mbew-kosgr .
+        wa_final-mlast  = wa_mbew-mlast.
+
+      ENDIF.
+
+      READ TABLE it_mlan INTO DATA(wa_mlan) WITH KEY  matnr = lwa_mara-matnr BINARY SEARCH.
+      IF sy-subrc = 0.
+        wa_final-taxm1    = wa_mlan-taxm1.
+      ENDIF.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-vendor_no
+        IMPORTING
+          output = wa_final-vendor_no.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-prctr
+        IMPORTING
+          output = wa_final-prctr.
+
+
+      READ TABLE it_mard INTO DATA(wa_mard1) WITH KEY matnr = lwa_mara-matnr
+                                                      werks = lwa_mara-werks BINARY SEARCH.
+      IF sy-subrc = 0.
+
+***        LOOP AT it_mard INTO DATA(wa_mard) WHERE matnr = wa_mard1-matnr AND werks = wa_mard1-werks.
+        LOOP AT it_mard INTO DATA(wa_mard) FROM sy-tabix.
+          IF ( wa_mard1-matnr NE wa_mard-matnr ) OR
+             ( wa_mard1-werks NE wa_mard-werks ) .
+            EXIT.
+          ENDIF.
+          wa_final-lgort = wa_mard-lgort.
+
+          CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+            EXPORTING
+              input  = wa_final-matnr
+            IMPORTING
+              output = wa_final-matnr.
+
+          APPEND wa_final TO it_final.
+          CLEAR: wa_final-lgort.
+
+          CLEAR: wa_mard.
+        ENDLOOP.
+
+      ELSE.
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+          EXPORTING
+            input  = wa_final-matnr
+          IMPORTING
+            output = wa_final-matnr.
+
+        APPEND wa_final TO it_final.
+      ENDIF.
+    ENDIF.
+
+
+    CLEAR: wa_final, lwa_mara .
+  ENDLOOP.
+
+  IF it_final IS NOT INITIAL.
+    SORT it_final BY mtart werks.
+
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form display_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM display_data .
+
+
+  PERFORM build_fieldcat_row USING:
+
+        'IT_FINAL'  'MTART'                       'Material Type'                                   '20'  ,
+        'IT_FINAL'  'MBRSH'                       'Industry Sector'                                 '20'  ,
+        'IT_FINAL'  'WERKS'                       'Plant'                                           '20'  ,
+        'IT_FINAL'  'LGORT'                       'Storage Location'                                '20'  ,
+        'IT_FINAL'  'VKORG'                       'Sales Org'                                       '20'  ,
+        'IT_FINAL'  'VTWEG'                       'Distribution Channel'                            '20'  ,
+        'IT_FINAL'  'MATNR'                       'Material Number'                                 '40'  ,
+        'IT_FINAL'  'MAKTX'                       'Material Description'                            '40'  ,
+        'IT_FINAL'  'MEINS'                       'Base UOM'                                        '20'  ,
+        'IT_FINAL'  'MATKL'                       'Material Group'                                  '20'  ,
+        'IT_FINAL'  'EXTWG'                       'Pattern/Design'                                  '40'  ,
+        'IT_FINAL'  'ZZPRESS_GROUP'               'Press Group'                                     '20'  ,
+        'IT_FINAL'  'BRGEW'                       'Gross Weight'                                    '20'  ,
+        'IT_FINAL'  'NTGEW'                       'Net Weight'                                      '20'  ,
+        'IT_FINAL'  'GEWEI'                       'Weight Unit'                                     '20'  ,
+        'IT_FINAL'  'GROES'                       'Size'                                            '32'  ,
+        'IT_FINAL'  'EAN11'                       'EAN/UPC'                                         '20'  ,
+        'IT_FINAL'  'NUMTP'                       'EAN Category'                                    '20'  ,
+        'IT_FINAL'  'FERTH'                       'Cross Ref Item Code'                             '20'  ,
+        'IT_FINAL'  'SPDRT'                       'Speed Rating (mph)'                              '20'  ,
+        'IT_FINAL'  'OUTDIA'                      'Outside Dia. (in)'                               '20'  ,
+        'IT_FINAL'  'SECWDT'                      'Section Width (in)'                              '20'  ,
+        'IT_FINAL'  'TRDPT'                       'Tread Depth (32nds)'                             '20'  ,
+        'IT_FINAL'  'ROLCIR'                      'Rolling Circu (in)'                              '20'  ,
+        'IT_FINAL'  'NONSKID'                     'Non Skid (32nds)'                                '20'  ,
+        'IT_FINAL'  'SLCC'                        'Single Load CC (lbs)'                            '20'  ,
+        'IT_FINAL'  'SAP_PSI'                     'Single Air Pressure (psi)'                       '20'  ,
+        'IT_FINAL'  'DLCC'                        'Dual Load CC'                                    '20'  ,
+        'IT_FINAL'  'DAP_PSI'                     'Dual Air Pressure (psi)'                         '20'  ,
+        'IT_FINAL'  'RPM'                         'Revo. Per Mil'                                   '20'  ,
+        'IT_FINAL'  'SLR'                         'Static Load Rad (in)'                            '20'  ,
+        'IT_FINAL'  'VENDOR_NO'                   'Vendor Number'                                   '35'  ,
+        'IT_FINAL'  'DOTCODE'                     'DOT Code'                                        '20'  ,
+        'IT_FINAL'  'ZEIFO'                       'No. Tires 40 HQ'                                 '20'  ,
+        'IT_FINAL'  'FORMT'                       'Rim Diameter'                                    '20'  ,
+        'IT_FINAL'  'MSBOOKPARTNO'                'Load/Speed Index'                                '20'  ,
+        'IT_FINAL'  'ZEIVR'                       'Ply Rating'                                      '20'  ,
+        'IT_FINAL'  'WRKST'                       'T & RA'                                          '20'  ,
+        'IT_FINAL'  'VMSTA'                       'DChain-Spec. Status'                             '20'  ,
+        'IT_FINAL'  'VMSTD'                       'Valid From'                                      '20'  ,
+        'IT_FINAL'  'SPART'                       'Division'                                        '20'  ,
+        'IT_FINAL'  'TAXM1'                       'Tax Classification'                              '20'  ,
+        'IT_FINAL'  'KONDM'                       'Material Pricing Group'                          '20'  ,
+        'IT_FINAL'  'KTGRM'                       'Account Assignment Group'                        '20'  ,
+        'IT_FINAL'  'VERSG'                       'Material Statistics Group'                       '20'  ,
+        'IT_FINAL'  'MTPOS_MARA'                  'Gen. Item Cat. Group'                            '20'  ,
+        'IT_FINAL'  'MTPOS'                       'Item Category Group'                             '20'  ,
+        'IT_FINAL'  'MVGR2'                       'Segment'                                         '20'  ,
+        'IT_FINAL'  'PRODH'                       'Prod Hierarchy'                                  '20'  ,
+        'IT_FINAL'  'MVGR1'                       'Brand'                                           '20'  ,
+        'IT_FINAL'  'MVGR4'                       'Fabric Type'                                     '20'  ,
+        'IT_FINAL'  'MVGR5'                       'Tire Type'                                       '20'  ,
+        'IT_FINAL'  'MVGR3'                       'Sub-Segment'                                     '20'  ,
+        'IT_FINAL'  'MFRGR'                       'Material Freight Group'                          '20'  ,
+        'IT_FINAL'  'TRAGR'                       'Transportation Group'                            '20'  ,
+        'IT_FINAL'  'LADGR'                       'Loading Group'                                   '20'  ,
+        'IT_FINAL'  'PRCTR'                       'Profit Center'                                   '20'  ,
+        'IT_FINAL'  'STEUC'                       'Control Code'                                    '20'  ,
+        'IT_FINAL'  'CASNR'                       'CAS Number  (Pharm.)'                            '20'  ,
+        'IT_FINAL'  'GPNUM'                       'PRODCOM No.'                                     '20'  ,
+        'IT_FINAL'  'HERKL'                       'Country Of Origin'                               '20'  ,
+        'IT_FINAL'  'EKGRP'                       'Purchasing Group'                                '20'  ,
+        'IT_FINAL'  'MMSTA'                       'Plant-Sp. Matl Status'                           '20'  ,
+        'IT_FINAL'  'SERNP'                       'Serial No Profile'                               '20'  ,
+        'IT_FINAL'  'MAABC'                       'ABC Indicator'                                   '20'  ,
+        'IT_FINAL'  'DISMM'                       'MRP Type'                                        '20'  ,
+        'IT_FINAL'  'MINBE'                       'Reorder Point'                                   '20'  ,
+        'IT_FINAL'  'DISPO'                       'MRP Controller'                                  '20'  ,
+        'IT_FINAL'  'DISLS'                       'Lot Size Procedure'                              '20'  ,
+        'IT_FINAL'  'AUSSS'                       'Assembly Scrap %'                                '20'  ,
+        'IT_FINAL'  'BSTMA'                       'Minimum Lot Size'                                '20'  ,
+        'IT_FINAL'  'MABST'                       'Maximum Stock Level'                             '20'  ,
+        'IT_FINAL'  'BSTRF'                       'Rounding Value'                                  '20'  ,
+        'IT_FINAL'  'BESKZ'                       'Procurment Type'                                 '20'  ,
+        'IT_FINAL'  'LGPRO'                       'Production Storage Location'                     '20'  ,
+        'IT_FINAL'  'RGEKZ'                       'Backflush'                                       '20'  ,
+        'IT_FINAL'  'FHORI'                       'Schedule Margin Key'                             '20'  ,
+        'IT_FINAL'  'PERKZ'                       'Period Indicator'                                '20'  ,
+        'IT_FINAL'  'STRGR'                       'Strategy Group'                                  '20'  ,
+        'IT_FINAL'  'MTVFP'                       'Availibilty Check'                               '20'  ,
+        'IT_FINAL'  'MISKZ'                       'Mixed MRP'                                       '20'  ,
+        'IT_FINAL'  'FEVOR'                       'Prodn Supervisor'                                '20'  ,
+        'IT_FINAL'  'SFCPF'                       'Prod. Sched. Profile'                            '20'  ,
+        'IT_FINAL'  'MLAST'                       'Price Determ.'                                   '20'  ,
+        'IT_FINAL'  'VPRSV'                       'Price Control'                                   '20'  ,
+        'IT_FINAL'  'PEINH'                       'Price Unit (Cost)'                               '20'  ,
+        'IT_FINAL'  'BKLAS'                       'Valuation Class'                                 '20'  ,
+        'IT_FINAL'  'EKALR'                       'Material Is Costed with Qty Structure'           '20'  ,
+        'IT_FINAL'  'HKMAT'                       'Material Related Origin'                         '20'  ,
+        'IT_FINAL'  'KOSGR'                       'Overhead Group'                                  '20'  ,
+        'IT_FINAL'  'AWSLS'                       'Variance Key'                                    '20'  ,
+        'IT_FINAL'  'ERNAM'                       'Created By'                                      '20'  ,
+        'IT_FINAL'  'ERSDA'                       'Material Created Date'                           '20'  ,
+        'IT_FINAL'  'LAEDA'                       'Material Changed Date'                           '20'  .
+
+
+  wa_layout-colwidth_optimize     =  'X'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'PF_STATUS_SET'
+      is_layout                = wa_layout
+      it_fieldcat              = it_fieldcat
+    TABLES
+      t_outtab                 = it_final
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+ENDFORM.
+
+
+
+FORM build_fieldcat_row  USING  p_tabname
+                     p_fieldname
+                     p_seltext
+                     p_length.
+
+
+  wa_fieldcat-tabname   = p_tabname.
+  wa_fieldcat-fieldname = p_fieldname.
+  wa_fieldcat-seltext_l = p_seltext.
+  wa_fieldcat-outputlen = p_length.
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------
+*& Form STATUS
+*&---------------------------------------------------------------------
+FORM pf_status_set USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZGUI'.
+ENDFORM.
