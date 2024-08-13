@@ -1,0 +1,529 @@
+INCLUDE zya_mmr_parked_miro_posting_s.
+INCLUDE zya_mmr_parked_miro_posting_t.
+INCLUDE zya_mmr_parked_miro_posting_f.
+
+START-OF-SELECTION.
+
+  PERFORM getdata.
+  IF it_final IS NOT INITIAL.
+    PERFORM display_data.
+  ELSE.
+    MESSAGE 'No Data Found' TYPE 'S' DISPLAY LIKE 'E'.
+
+  ENDIF.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_PARKED_MIRO_POSTING_S
+*&---------------------------------------------------------------------*
+
+TABLES : rbkp_dis.
+SELECTION-SCREEN : BEGIN OF BLOCK s1 WITH FRAME TITLE TEXT-001 .
+
+  SELECT-OPTIONS : so_belnr  FOR rbkp_dis-belnr, " document number
+                   so_gjahr  FOR rbkp_dis-gjahr, "fiscal year
+                   so_lifnr  FOR rbkp_dis-lifnr, "invoicing party    "vendor
+                   so_bldat  FOR rbkp_dis-bldat, " document date
+                   so_budat  FOR rbkp_dis-budat, " posting date
+                   so_xblnr  FOR rbkp_dis-xblnr, " reference doc.
+                   so_usnam  FOR rbkp_dis-usnam. " user
+SELECTION-SCREEN : END OF BLOCK s1.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_PARKED_MIRO_POSTING_T
+*&---------------------------------------------------------------------*
+
+
+
+TYPES: BEGIN OF ty_final,
+         chk       TYPE char1,
+         belnr     TYPE rbkp_dis-belnr,                    "Invoice Document No.
+         gjahr     TYPE rbkp_dis-gjahr,                    "Fiscal Year
+         blart     TYPE rbkp_dis-blart,                    "Document Type
+         bldat     TYPE rbkp_dis-bldat,                    "Document Date
+         budat     TYPE rbkp_dis-budat,                    "Posting Date
+         usnam     TYPE rbkp_dis-usnam,                    "User Name
+         tcode     TYPE rbkp_dis-tcode,                    "Transaction Code
+         cpudt     TYPE rbkp_dis-cpudt,                    "Entry Date
+         cputm     TYPE rbkp_dis-cputm,                    "Time of Entry
+         vgart     TYPE rbkp_dis-vgart,                    "Transaction Type
+         xblnr     TYPE rbkp_dis-xblnr,                    "Reference
+         bukrs     TYPE rbkp_dis-bukrs,                    "Company Code
+         lifnr     TYPE rbkp_dis-lifnr,                    "Vendor No
+         name1     TYPE lfa1-name1,                        "Vendor Name
+         waers     TYPE rbkp_dis-waers,                    "Currency
+         kursf     TYPE rbkp_dis-kursf,                    "Exchange rate
+         rmwwr     TYPE rbkp_dis-rmwwr,                    "Gross Invoice Amount
+         beznk     TYPE rbkp_dis-beznk,                    "Unplanned Del. Costs
+         rpzielmw  TYPE rbkp_dis-rpzielmw,                 "Value-Added Tax Amt
+         mwskz1    TYPE rbkp_dis-mwskz1,                   "Tax Code
+         zterm     TYPE rbkp_dis-zterm,                    "Payment terms
+         bktxt     TYPE rbkp_dis-bktxt,                    "Document Header Text
+         saprl     TYPE rbkp_dis-saprl,                    "SAP Release
+         logsys    TYPE rbkp_dis-logsys,                   "Logical system
+         erfnam    TYPE rbkp_dis-erfnam,                   "Entered By
+         rpzieln   TYPE rbkp_dis-rpzieln,                  "Net Invoice Total
+         rpzielmw1 TYPE rbkp_dis-rpzielmw,                "Value-Added Tax Amt
+         zfbdt     TYPE rbkp_fi-zfbdt,                     "Baseline Payment Dte
+         monat     TYPE rbkp_fi-monat,                     "Posting period
+
+       END OF ty_final,
+
+       BEGIN OF ty_final2,
+*         chk       TYPE char1,
+         belnr     TYPE rbkp_dis-belnr,                    "Invoice Document No.
+         gjahr     TYPE rbkp_dis-gjahr,                    "Fiscal Year
+         blart     TYPE rbkp_dis-blart,                    "Document Type
+         bldat     TYPE rbkp_dis-bldat,                    "Document Date
+         budat     TYPE rbkp_dis-budat,                    "Posting Date
+         usnam     TYPE rbkp_dis-usnam,                    "User Name
+         tcode     TYPE rbkp_dis-tcode,                    "Transaction Code
+         cpudt     TYPE rbkp_dis-cpudt,                    "Entry Date
+         cputm     TYPE rbkp_dis-cputm,                    "Time of Entry
+         vgart     TYPE rbkp_dis-vgart,                    "Transaction Type
+         xblnr     TYPE rbkp_dis-xblnr,                    "Reference
+         bukrs     TYPE rbkp_dis-bukrs,                    "Company Code
+         lifnr     TYPE rbkp_dis-lifnr,                    "Vendor No
+         name1     TYPE lfa1-name1,                        "Vendor Name
+         waers     TYPE rbkp_dis-waers,                    "Currency
+         kursf     TYPE rbkp_dis-kursf,                    "Exchange rate
+         rmwwr     TYPE rbkp_dis-rmwwr,                    "Gross Invoice Amount
+         beznk     TYPE rbkp_dis-beznk,                    "Unplanned Del. Costs
+         rpzielmw  TYPE rbkp_dis-rpzielmw,                 "Value-Added Tax Amt
+         mwskz1    TYPE rbkp_dis-mwskz1,                   "Tax Code
+         zterm     TYPE rbkp_dis-zterm,                    "Payment terms
+         bktxt     TYPE rbkp_dis-bktxt,                    "Document Header Text
+         saprl     TYPE rbkp_dis-saprl,                    "SAP Release
+         logsys    TYPE rbkp_dis-logsys,                   "Logical system
+         erfnam    TYPE rbkp_dis-erfnam,                   "Entered By
+         rpzieln   TYPE rbkp_dis-rpzieln,                  "Net Invoice Total
+         rpzielmw1 TYPE rbkp_dis-rpzielmw,                "Value-Added Tax Amt
+         zfbdt     TYPE rbkp_fi-zfbdt,                     "Baseline Payment Dte
+         monat     TYPE rbkp_fi-monat,                     "Posting period
+         mesg      TYPE char256,
+       END OF ty_final2.
+
+
+
+DATA: it_final     TYPE TABLE OF ty_final,
+      wa_final     TYPE ty_final,
+      it_ERROR     TYPE TABLE OF ty_final2,
+      wa_ERROR     TYPE ty_final2,
+      it_fieldcat  TYPE slis_t_fieldcat_alv,
+      wa_fieldcat  TYPE slis_fieldcat_alv,
+      wa_layout    TYPE slis_layout_alv,
+
+      it_fieldcat1 TYPE slis_t_fieldcat_alv,
+      wa_fieldcat1 TYPE slis_fieldcat_alv,
+      wa_layout1   TYPE slis_layout_alv,
+
+      lv_belnr     TYPE bapi_incinv_fld-inv_doc_no,
+      lv_fisc_year TYPE bapi_incinv_fld-fisc_year,
+      it_return    TYPE TABLE OF bapiret2,
+      wa_return    TYPE bapiret2,
+      l_select     TYPE char1,             "FLAG FOR SELECTION
+      go_data      TYPE REF TO data.
+
+FIELD-SYMBOLS:
+  <gt_data>   TYPE ANY TABLE,
+  <gt_table2> TYPE STANDARD TABLE,
+  <gt_tline2> TYPE any.
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_PARKED_MIRO_POSTING_F
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form getdata
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM getdata .
+
+
+  cl_salv_bs_runtime_info=>clear_all( ).
+  CLEAR : it_final[].
+
+  cl_salv_bs_runtime_info=>set( EXPORTING display  = abap_false
+                                     metadata = abap_false
+                                     data     = abap_true ).
+
+  SUBMIT rmmr1mdi   WITH so_belnr IN so_belnr
+                    WITH so_gjahr IN so_gjahr
+                    WITH so_bukrs  = '3000'
+                    WITH so_lifnr IN so_lifnr
+                    WITH so_bldat IN so_bldat
+                    WITH so_budat IN so_budat
+                    WITH so_xblnr IN so_xblnr
+                    WITH so_usnam IN so_usnam
+
+                    WITH p_iv_ov  EQ ''
+                    WITH p_iv_par EQ abap_true
+*                    WITH p_st_po  EQ abap_false
+                    WITH p_st_pa  EQ 'X'
+                    WITH p_st_co  EQ 'X'
+                    WITH pa_inv   EQ 'X'
+                    WITH pa_cred  EQ 'X'
+                    EXPORTING LIST TO MEMORY AND RETURN.
+
+  TRY.
+      cl_salv_bs_runtime_info=>get_data_ref(
+        IMPORTING r_data = go_data ).
+      ASSIGN go_data->* TO <gt_data>.
+
+      IF <gt_data> IS ASSIGNED.
+        LOOP AT <gt_data> ASSIGNING FIELD-SYMBOL(<fs_data>).
+          MOVE-CORRESPONDING <fs_data> TO wa_final.
+          APPEND wa_final TO it_final.
+          CLEAR: wa_final.
+        ENDLOOP.
+      ELSE.
+*          IMSG = 'No Data Found'.
+      ENDIF.
+
+    CATCH cx_salv_bs_sc_runtime_info ##NO_HANDLER.
+*        IMSG = 'No Data Found'.
+
+  ENDTRY.
+  cl_salv_bs_runtime_info=>clear_all( ).
+
+
+
+  IF it_final IS NOT INITIAL.
+    SELECT lifnr, name1
+      FROM lfa1
+      INTO TABLE @DATA(it_lfa1)
+      FOR ALL ENTRIES IN @it_final
+      WHERE lifnr = @it_final-lifnr.
+  ENDIF.
+
+
+  LOOP AT it_final INTO wa_final.
+
+    READ TABLE it_lfa1 INTO DATA(wa_lfa1) WITH KEY lifnr = wa_final-lifnr.
+    IF sy-subrc = 0.
+      wa_final-name1    = wa_lfa1-name1.
+    ENDIF.
+
+    MODIFY it_final FROM wa_final.
+    CLEAR: wa_final.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form display_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM display_data .
+
+
+  PERFORM build_fieldcat_row USING:
+
+  'IT_FINAL'     'CHK'            'Select Invoice'             'X'  'X' '20'   ''   ,
+  'IT_FINAL'     'BELNR'          'Invoice Document No.'       ''   ''  '20'   'X'   ,
+  'IT_FINAL'     'GJAHR'          'Fiscal Year'                ''   ''  '20'   ''   ,
+  'IT_FINAL'     'BLART'          'Document Type'              ''   ''  '20'   ''   ,
+  'IT_FINAL'     'BLDAT'          'Document Date'              ''   ''  '20'   ''   ,
+  'IT_FINAL'     'BUDAT'          'Posting Date'               ''   ''  '20'   ''   ,
+  'IT_FINAL'     'USNAM'          'User Name'                  ''   ''  '30'   ''   ,
+  'IT_FINAL'     'TCODE'          'Transaction Code'           ''   ''  '20'   ''   ,
+  'IT_FINAL'     'CPUDT'          'Entry Date'                 ''   ''  '20'   ''   ,
+  'IT_FINAL'     'CPUTM'          'Time of Entry'              ''   ''  '20'   ''   ,
+  'IT_FINAL'     'VGART'          'Transaction Type'           ''   ''  '20'   ''   ,
+  'IT_FINAL'     'XBLNR'          'Reference'                  ''   ''  '20'   ''   ,
+  'IT_FINAL'     'BUKRS'          'Company Code'               ''   ''  '20'   ''   ,
+  'IT_FINAL'     'LIFNR'          'Vendor No'                  ''   ''  '20'   ''   ,
+  'IT_FINAL'     'NAME1'          'Vendor Name'                ''   ''  '30'   ''   ,
+  'IT_FINAL'     'WAERS'          'Currency'                   ''   ''  '20'   ''   ,
+  'IT_FINAL'     'KURSF'          'Exchange rate'              ''   ''  '20'   ''   ,
+  'IT_FINAL'     'RMWWR'          'Gross Invoice Amount'       ''   ''  '20'   ''   ,
+  'IT_FINAL'     'BEZNK'          'Unplanned Del. Costs'       ''   ''  '20'   ''   ,
+  'IT_FINAL'     'RPZIELMW'       'Value-Added Tax Amt'        ''   ''  '20'   ''   ,
+  'IT_FINAL'     'MWSKZ1'         'Tax Code'                   ''   ''  '20'   ''   ,
+  'IT_FINAL'     'ZTERM'          'Payment terms'              ''   ''  '20'   ''   ,
+  'IT_FINAL'     'BKTXT'          'Document Header Text'       ''   ''  '20'   ''   ,
+  'IT_FINAL'     'SAPRL'          'SAP Release'                ''   ''  '20'   ''   ,
+  'IT_FINAL'     'LOGSYS'         'Logical system'             ''   ''  '20'   ''   ,
+  'IT_FINAL'     'ERFNAM'         'Entered By'                 ''   ''  '20'   ''   ,
+  'IT_FINAL'     'RPZIELN'        'Net Invoice Total'          ''   ''  '20'   ''   ,
+  'IT_FINAL'     'RPZIELMW'       'Value-Added Tax Amt'        ''   ''  '20'   ''   ,
+  'IT_FINAL'     'ZFBDT'          'Baseline Payment Dte'       ''   ''  '20'   ''   ,
+  'IT_FINAL'     'MONAT'          'Posting period'             ''   ''  '20'   ''   .
+
+
+  wa_layout-colwidth_optimize     =  'X'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      i_callback_user_command  = 'USER_COMMAND'
+      is_layout                = wa_layout
+      it_fieldcat              = it_fieldcat
+    TABLES
+      t_outtab                 = it_final
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+ENDFORM.
+
+
+
+FORM build_fieldcat_row  USING  p_tabname
+                     p_fieldname
+                     p_seltext
+                     p_chk
+                     p_edit
+                     p_length
+                     p_hotspot.
+
+  wa_fieldcat-tabname   = p_tabname.
+  wa_fieldcat-fieldname = p_fieldname.
+  wa_fieldcat-seltext_l = p_seltext.
+  wa_fieldcat-checkbox  = p_chk.
+  wa_fieldcat-edit      = p_edit.
+  wa_fieldcat-outputlen = p_length.
+  wa_fieldcat-hotspot   = p_hotspot.
+
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat.
+
+
+ENDFORM.
+
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZGUI'.
+ENDFORM.
+
+
+FORM user_command USING command LIKE sy-ucomm
+                      selfield TYPE slis_selfield..
+
+  DATA : go_alv   TYPE REF TO cl_gui_alv_grid,
+         lv_valid TYPE char01.
+
+  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+    IMPORTING
+      e_grid = go_alv.
+
+  CALL METHOD go_alv->check_changed_data
+    IMPORTING
+      e_valid = lv_valid.
+
+  CLEAR: l_select.
+
+  CASE command.
+    WHEN '&SAL1'.
+
+      CALL METHOD go_alv->refresh_table_display
+        EXCEPTIONS
+          finished = 1
+          OTHERS   = 2.
+
+      LOOP AT it_final INTO DATA(wa_final2) ."WHERE CHK = 'X' .
+        IF sy-subrc = 0.
+          l_select = 'X'.
+          CLEAR: wa_final2-chk .
+          MODIFY it_final FROM wa_final2.
+        ENDIF.
+        CLEAR wa_final2.
+      ENDLOOP.
+      CLEAR: l_select.
+
+    WHEN '&ALL2'.
+
+      CALL METHOD go_alv->refresh_table_display
+        EXCEPTIONS
+          finished = 1
+          OTHERS   = 2.
+
+      LOOP AT it_final INTO DATA(wa_final3).
+        IF sy-subrc = 0.
+          l_select = 'X'.
+          wa_final3-chk = 'X'.
+          MODIFY it_final FROM wa_final3.
+        ENDIF.
+        CLEAR wa_final3 .
+      ENDLOOP.
+
+    WHEN '&EXC1'.
+      CLEAR: wa_final, wa_error.
+      REFRESH : it_error.
+      READ TABLE it_final INTO wa_final WITH KEY chk = 'X'.
+      IF sy-subrc = 0.
+        l_select = 'X'.
+      ENDIF.
+
+
+      IF l_select IS INITIAL.
+        MESSAGE  e398(00) WITH 'Please select atleast one record'.
+      ELSE.
+        CLEAR: wa_final, l_select.
+        LOOP AT it_final INTO wa_final WHERE chk = 'X'.
+          MOVE-CORRESPONDING wa_final TO wa_error.
+          APPEND wa_error TO it_error.
+
+          lv_belnr      = wa_final-belnr.
+          lv_fisc_year  = wa_final-gjahr.
+
+          IF lv_belnr IS NOT INITIAL AND lv_fisc_year IS NOT INITIAL.
+            CALL FUNCTION 'BAPI_INCOMINGINVOICE_POST'
+              EXPORTING
+                invoicedocnumber = lv_belnr
+                fiscalyear       = lv_fisc_year
+              TABLES
+                return           = it_return.
+
+            CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+              EXPORTING
+                wait = 'X'.
+
+            IF it_return IS NOT INITIAL.
+              LOOP AT it_return INTO wa_return.
+                IF  wa_return-type = 'E' OR wa_return-type = 'A'.
+*                  * Error Message---------------------------
+
+                  CONCATENATE wa_error-mesg wa_return-message INTO wa_error-mesg SEPARATED BY ' '.
+                  MODIFY it_error FROM wa_error TRANSPORTING mesg WHERE belnr = wa_final-belnr .
+*                ELSEIF wa_return-type = 'S' .
+*                 * Success Message---------------------
+*                  wa_error-mesg           = wa_return-message. "
+*                  MODIFY it_error FROM wa_error.
+                ENDIF.
+                CLEAR: wa_return.  ",wa_error.
+              ENDLOOP.
+            ELSE.
+              wa_error-mesg          = 'Invoice Posted Successfully'.
+              MODIFY it_error FROM wa_error TRANSPORTING  mesg WHERE belnr = wa_final-belnr .
+              DELETE it_final WHERE belnr = wa_final-belnr.
+            ENDIF.
+          ENDIF.
+
+          CLEAR: wa_final, wa_error, lv_belnr, lv_fisc_year  .
+          REFRESH: it_return.
+        ENDLOOP.
+
+
+        IF it_error IS NOT INITIAL.
+          PERFORM display_sub.
+        ENDIF.
+
+      ENDIF.
+
+
+
+  ENDCASE.
+
+
+
+
+  CASE selfield-fieldname.
+    WHEN 'BELNR'.
+      READ TABLE it_final INDEX selfield-tabindex INTO DATA(lwa_output).
+      IF sy-subrc EQ 0.
+        SET PARAMETER ID 'RBN' FIELD lwa_output-belnr.
+        SET PARAMETER ID 'GJR' FIELD lwa_output-gjahr.
+        CALL TRANSACTION 'MIR4' AND SKIP FIRST SCREEN.
+      ENDIF.
+      CLEAR: selfield.
+  ENDCASE.
+
+
+  selfield-refresh = 'X'.
+  CLEAR command.
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form display_data1
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM display_sub .
+  REFRESH: it_fieldcat1.
+  CLEAR: wa_fieldcat.
+
+  PERFORM build_fieldcat_row1 USING:
+
+  'IT_FINAL'     'BELNR'          'Invoice Document No.'        ,
+  'IT_FINAL'     'GJAHR'          'Fiscal Year'                 ,
+  'IT_FINAL'     'BLART'          'Document Type'               ,
+  'IT_FINAL'     'BLDAT'          'Document Date'               ,
+  'IT_FINAL'     'BUDAT'          'Posting Date'                ,
+  'IT_FINAL'     'USNAM'          'User Name'                   ,
+  'IT_FINAL'     'TCODE'          'Transaction Code'            ,
+  'IT_FINAL'     'CPUDT'          'Entry Date'                  ,
+  'IT_FINAL'     'CPUTM'          'Time of Entry'               ,
+  'IT_FINAL'     'VGART'          'Transaction Type'            ,
+  'IT_FINAL'     'XBLNR'          'Reference'                   ,
+  'IT_FINAL'     'BUKRS'          'Company Code'                ,
+  'IT_FINAL'     'LIFNR'          'Vendor No'                   ,
+  'IT_FINAL'     'NAME1'          'Vendor Name'                 ,
+  'IT_FINAL'     'WAERS'          'Currency'                    ,
+  'IT_FINAL'     'KURSF'          'Exchange rate'               ,
+  'IT_FINAL'     'RMWWR'          'Gross Invoice Amount'        ,
+  'IT_FINAL'     'BEZNK'          'Unplanned Del. Costs'        ,
+  'IT_FINAL'     'RPZIELMW'       'Value-Added Tax Amt'         ,
+  'IT_FINAL'     'MWSKZ1'         'Tax Code'                    ,
+  'IT_FINAL'     'ZTERM'          'Payment terms'               ,
+  'IT_FINAL'     'BKTXT'          'Document Header Text'        ,
+  'IT_FINAL'     'SAPRL'          'SAP Release'                 ,
+  'IT_FINAL'     'LOGSYS'         'Logical system'              ,
+  'IT_FINAL'     'ERFNAM'         'Entered By'                  ,
+  'IT_FINAL'     'RPZIELN'        'Net Invoice Total'           ,
+  'IT_FINAL'     'RPZIELMW'       'Value-Added Tax Amt'         ,
+  'IT_FINAL'     'ZFBDT'          'Baseline Payment Dte'        ,
+  'IT_FINAL'     'MONAT'          'Posting period'              ,
+  'IT_FINAL'     'MESG'           'Success/Error Message'     .
+
+
+  wa_layout1-colwidth_optimize     =  'X'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+*     i_callback_pf_status_set = 'SET_PF_STATUS'
+*     i_callback_user_command  = 'USER_COMMAND'
+      is_layout          = wa_layout1
+      it_fieldcat        = it_fieldcat1
+    TABLES
+      t_outtab           = it_error
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+
+ENDFORM.
+
+
+
+FORM build_fieldcat_row1  USING  p_tabname1
+                     p_fieldname1
+                     p_seltext1.
+
+  wa_fieldcat1-tabname   = p_tabname1.
+  wa_fieldcat1-fieldname = p_fieldname1.
+  wa_fieldcat1-seltext_l = p_seltext1.
+
+
+  APPEND wa_fieldcat1 TO it_fieldcat1.
+  CLEAR wa_fieldcat1.
+
+
+ENDFORM.
