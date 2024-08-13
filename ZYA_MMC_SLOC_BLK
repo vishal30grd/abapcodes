@@ -1,0 +1,599 @@
+INCLUDE zya_mmc_sloc_blk_t.
+INCLUDE zya_mmc_sloc_blk_s.
+INCLUDE zya_mmc_sloc_blk_f.
+
+AT SELECTION-SCREEN OUTPUT.
+
+  IF r1 = 'X'.
+    LOOP AT SCREEN.
+      IF screen-group1 = 'AAA'.
+        screen-active = 1.
+        screen-input = 1.
+      ENDIF.
+
+      IF screen-group1 = 'BBB'.
+        screen-active = 0.
+        screen-input = 0.
+      ENDIF.
+      MODIFY SCREEN.
+    ENDLOOP.
+
+  ELSEIF r2 = 'X'.
+    LOOP AT SCREEN.
+      IF screen-group1 = 'BBB' OR  screen-group1 = 'AAA'  .
+        screen-active = 0.
+        screen-input = 0.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDLOOP.
+
+  ELSEIF r3 = 'X'.
+    LOOP AT SCREEN.
+      IF screen-group1 = 'BBB'.
+        screen-active = 1.
+        screen-input = 1.
+      ENDIF.
+
+      IF screen-group1 = 'AAA'.
+        screen-active = 0.
+        screen-input = 0.
+      ENDIF.
+      MODIFY SCREEN.
+    ENDLOOP.
+  ENDIF.
+
+*-------------------------------------------------------------------------------------------------*
+* Events: At Selection-Screen
+*-------------------------------------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  PERFORM get_file.
+
+START-OF-SELECTION.
+  IF r1 = 'X'.
+    PERFORM read_data_from_file.
+    IF gt_data IS NOT INITIAL.
+      PERFORM upload_data.
+*      PERFORM display.
+    ELSE.
+      MESSAGE 'File Not Uploaded \ Error In File' TYPE 'S' DISPLAY LIKE 'E'.
+      LEAVE LIST-PROCESSING.
+    ENDIF.
+  ELSEIF r2 = 'X'.
+    PERFORM get_template.
+  ELSEIF r3 = 'X'.
+    PERFORM getdata.
+    IF it_final IS NOT INITIAL.
+      PERFORM display_data.
+    ELSE.
+      MESSAGE 'Data Not Found' TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
+
+  ENDIF.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMC_SLOC_BLK_T
+*&---------------------------------------------------------------------*
+TABLES: zya_mmt_sloc_blk.
+
+TYPES: BEGIN OF ty_final,
+         werks        TYPE zya_mmt_sloc_blk-werks,
+         lgort        TYPE zya_mmt_sloc_blk-lgort,
+         matnr        TYPE zya_mmt_sloc_blk-matnr,
+         sloc_block   TYPE zya_mmt_sloc_blk-sloc_block,
+         created_by   TYPE zya_mmt_sloc_blk-created_by,
+         created_date TYPE zya_mmt_sloc_blk-created_date,
+         created_time TYPE zya_mmt_sloc_blk-created_time,
+         changed_by   TYPE zya_mmt_sloc_blk-changed_by,
+         changed_date TYPE zya_mmt_sloc_blk-changed_date,
+         changed_time TYPE zya_mmt_sloc_blk-changed_time,
+       END OF ty_final,
+
+       BEGIN OF ty_error,
+         werks      TYPE zya_mmt_sloc_blk-werks,
+         lgort      TYPE zya_mmt_sloc_blk-lgort,
+         matnr      TYPE zya_mmt_sloc_blk-matnr,
+         sloc_block TYPE zya_mmt_sloc_blk-sloc_block,
+         msg        TYPE char120,
+       END OF ty_error,
+
+       BEGIN OF ty_mfinal.
+         INCLUDE STRUCTURE zya_mmt_sloc_blk.
+TYPES : block_status TYPE char20,
+       END OF ty_mfinal.
+
+
+
+DATA:
+*      it_final     TYPE TABLE OF zya_mmt_sloc_blk,
+  it_final     TYPE TABLE OF ty_mfinal,
+  wa_final     TYPE ty_mfinal,
+*      wa_final     TYPE zya_mmt_sloc_blk,
+
+  gt_data      TYPE TABLE OF ty_final,
+  gs_data      TYPE ty_final,
+
+  it_error     TYPE TABLE OF ty_error,
+  wa_error     TYPE ty_error,
+  it_fieldcat  TYPE slis_t_fieldcat_alv,
+  wa_fieldcat  TYPE slis_fieldcat_alv,
+  wa_layout    TYPE slis_layout_alv,
+
+  it_fieldcat2 TYPE slis_t_fieldcat_alv,
+  wa_fieldcat2 TYPE slis_fieldcat_alv,
+  wa_layout2   TYPE slis_layout_alv.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMC_SLOC_BLK_S
+*&---------------------------------------------------------------------*
+
+TABLES: rcgfiletr.
+
+SELECTION-SCREEN:   BEGIN OF BLOCK a1 WITH FRAME TITLE TEXT-001 .
+  PARAMETERS: p_file TYPE rcgfiletr-ftfront MODIF ID aaa.
+  SELECT-OPTIONS : s_matnr FOR zya_mmt_sloc_blk-matnr MODIF ID bbb,
+                   s_werks FOR zya_mmt_sloc_blk-werks MODIF ID bbb," OBLIGATORY,
+                   s_lgort FOR zya_mmt_sloc_blk-lgort MODIF ID bbb.
+
+SELECTION-SCREEN: END OF BLOCK a1 .
+
+
+SELECTION-SCREEN: BEGIN OF BLOCK b WITH FRAME TITLE TEXT-002 .
+  PARAMETERS : r1 RADIOBUTTON GROUP rad1  DEFAULT 'X' USER-COMMAND rd,
+               r2 RADIOBUTTON GROUP rad1,
+               r3 RADIOBUTTON GROUP rad1.
+SELECTION-SCREEN : END OF BLOCK b.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-003.
+  SELECTION-SCREEN COMMENT /05(70) TEXT-004.
+SELECTION-SCREEN: END OF BLOCK b2 .
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMC_SLOC_BLK_F
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form get_file
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_file .
+  DATA : lt_filetable TYPE filetable,
+         lw_filetable LIKE LINE OF lt_filetable,
+         lv_rc        TYPE i.
+
+  REFRESH: lt_filetable .
+  CLEAR: lv_rc.
+
+  cl_gui_frontend_services=>file_open_dialog(
+    EXPORTING
+      window_title            = 'Browse File'    " Title Of File Open Dialog
+    CHANGING
+      file_table              = lt_filetable    " Table Holding Selected Files
+      rc                      = lv_rc    " Return Code, Number of Files or -1 If Error Occurred
+    EXCEPTIONS
+      file_open_dialog_failed = 1
+      cntl_error              = 2
+      error_no_gui            = 3
+      not_supported_by_gui    = 4
+      OTHERS                  = 5
+  ).
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+  READ TABLE lt_filetable INTO lw_filetable INDEX 1.
+  p_file = lw_filetable-filename.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form read_data_from_file
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM read_data_from_file .
+  DATA : lv_filename TYPE rlgrap-filename,
+         lt_intern   TYPE STANDARD TABLE OF  alsmex_tabline.
+
+  lv_filename = p_file.
+
+  REFRESH : lt_intern, gt_data.
+
+
+  CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+    EXPORTING
+      filename                = lv_filename
+      i_begin_col             = '1'
+      i_begin_row             = '2'
+      i_end_col               = '256'
+      i_end_row               = '950000'
+    TABLES
+      intern                  = lt_intern
+    EXCEPTIONS
+      inconsistent_parameters = 1
+      upload_ole              = 2
+      OTHERS                  = 3.
+  IF sy-subrc <> 0.
+* Implement sugt_datale error handling here
+  ENDIF.
+
+
+  FIELD-SYMBOLS <fs_intern> LIKE LINE OF lt_intern.
+  FIELD-SYMBOLS <fs_value> TYPE any.
+
+  LOOP AT lt_intern ASSIGNING <fs_intern>.
+
+    ASSIGN COMPONENT <fs_intern>-col OF STRUCTURE gs_data TO <fs_value>.
+    <fs_value> = <fs_intern>-value.
+
+    AT END OF row.
+** SOC by Meghana on 22/12
+      IF gs_data-sloc_block IS NOT INITIAL.
+        TRANSLATE gs_data-sloc_block TO UPPER CASE.
+      ENDIF.
+      IF gs_data-lgort IS NOT INITIAL.
+        TRANSLATE gs_data-lgort TO UPPER CASE.
+      ENDIF.
+** EOC by Meghana on 22/12
+      APPEND gs_data TO gt_data.
+      CLEAR gs_data.
+    ENDAT.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form get_template
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_template .
+  DATA: lt_header TYPE string_table,
+        ls_header TYPE  string,
+        lv_fname1 TYPE string,
+        lv_path1  TYPE string,
+        lv_fpath1 TYPE string.
+
+  CLEAR ls_header.
+  REFRESH lt_header.
+
+  ls_header =
+
+     'Plant '                          &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Storage Location '               &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Material No '                    &&      cl_abap_char_utilities=>horizontal_tab &&
+     'Block Status(Yes/No) '           &&      cl_abap_char_utilities=>horizontal_tab && cl_abap_char_utilities=>newline .
+
+
+  APPEND ls_header TO lt_header.
+
+
+  CALL METHOD cl_gui_frontend_services=>file_save_dialog
+    EXPORTING
+      window_title              = 'Save File'
+      default_extension         = 'XLSX'
+      default_file_name         = 'Material & SLoc Blocked Upload Template'
+    CHANGING
+      filename                  = lv_fname1
+      path                      = lv_path1
+      fullpath                  = lv_fpath1
+    EXCEPTIONS
+      cntl_error                = 1
+      error_no_gui              = 2
+      not_supported_by_gui      = 3
+      invalid_default_file_name = 4
+      OTHERS                    = 5.
+  IF sy-subrc <> 0.
+
+  ENDIF.
+
+  CHECK lv_fpath1 IS NOT INITIAL.
+
+
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+*     BIN_FILESIZE            =
+      filename                = lv_fpath1
+      filetype                = 'ASC'
+*     APPEND                  = SPACE
+      write_field_separator   = 'X'
+*  IMPORTING
+*     FILELENGTH              =
+    CHANGING
+      data_tab                = lt_header
+    EXCEPTIONS
+      file_write_error        = 1
+      no_batch                = 2
+      gui_refuse_filetransfer = 3
+      invalid_type            = 4
+      no_authority            = 5
+      unknown_error           = 6
+      header_not_allowed      = 7
+      separator_not_allowed   = 8
+      filesize_not_allowed    = 9
+      header_too_long         = 10
+      dp_error_create         = 11
+      dp_error_send           = 12
+      dp_error_write          = 13
+      unknown_dp_error        = 14
+      access_denied           = 15
+      dp_out_of_memory        = 16
+      disk_full               = 17
+      dp_timeout              = 18
+      file_not_found          = 19
+      dataprovider_exception  = 20
+      control_flush_error     = 21
+      not_supported_by_gui    = 22
+      error_no_gui            = 23
+      OTHERS                  = 24.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+          WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+*
+
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form upload_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM upload_data .
+  LOOP AT gt_data INTO gs_data.
+
+** SOC by Meghana on 22/12
+    IF gs_data-lgort IS NOT INITIAL
+    AND gs_data-werks IS NOT INITIAL.
+      SELECT SINGLE * FROM t001l INTO @DATA(lv_t001l) WHERE lgort = @gs_data-lgort AND werks = @gs_data-werks.
+      IF sy-subrc NE 0.
+        wa_error-werks = gs_data-werks.
+        wa_error-lgort = gs_data-lgort.
+        wa_error-matnr = gs_data-matnr.
+        wa_error-msg   = 'Entered Storage Location & Plant combination not Available '.
+        APPEND wa_error TO it_error.
+        CLEAR: wa_error.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    IF gs_data-matnr IS NOT INITIAL
+      AND gs_data-werks IS NOT INITIAL.
+
+      SELECT SINGLE * FROM marc INTO @DATA(lv_marc) WHERE matnr = @gs_data-matnr AND werks = @gs_data-werks.
+      IF sy-subrc NE 0.
+        wa_error-werks = gs_data-werks.
+        wa_error-lgort = gs_data-lgort.
+        wa_error-matnr = gs_data-matnr.
+        wa_error-msg   = 'Entered Material & Plant combination not Available'.
+        APPEND wa_error TO it_error.
+        CLEAR: wa_error.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+** EOC by Meghana on 22/12
+    IF gs_data-sloc_block IS NOT INITIAL.
+
+      SELECT SINGLE *                                  "checking existing data
+        FROM zya_mmt_sloc_blk
+        INTO @DATA(wa_zya_mmt_sloc_blk)
+        WHERE werks = @gs_data-werks
+          AND lgort = @gs_data-lgort
+          AND matnr = @gs_data-matnr.
+** SOC by Meghana on 22/12
+      IF  gs_data-sloc_block IS NOT INITIAL AND NOT
+         ( gs_data-sloc_block  = 'YES' OR
+          gs_data-sloc_block = 'NO' ).
+        wa_error-werks = gs_data-werks.
+        wa_error-lgort = gs_data-lgort.
+        wa_error-matnr = gs_data-matnr.
+        wa_error-msg   = ' Block Status can be only YES/NO '.
+        APPEND wa_error TO it_error.
+        CLEAR: wa_error.
+** EOC by Meghana on 22/12
+      ELSEIF wa_zya_mmt_sloc_blk IS NOT INITIAL.
+        IF wa_zya_mmt_sloc_blk-sloc_block NE gs_data-sloc_block.
+          gs_data-created_by      =  wa_zya_mmt_sloc_blk-created_by   .
+          gs_data-created_date    =  wa_zya_mmt_sloc_blk-created_date .
+          gs_data-created_time    =  wa_zya_mmt_sloc_blk-created_time .
+          gs_data-changed_by      = sy-uname.
+          gs_data-changed_date    = sy-datum.
+          gs_data-changed_time    = sy-uzeit.
+
+          MOVE-CORRESPONDING gs_data TO zya_mmt_sloc_blk.
+          MODIFY zya_mmt_sloc_blk.
+          COMMIT WORK.
+
+          IF sy-subrc = 0.
+            wa_error-werks = gs_data-werks.
+            wa_error-lgort = gs_data-lgort.
+            wa_error-matnr = gs_data-matnr.
+            wa_error-msg   = 'Data Modified Successfully'.
+            APPEND wa_error TO it_error.
+            CLEAR: wa_error.
+          ENDIF.
+        ELSE.
+          wa_error-werks = gs_data-werks.
+          wa_error-lgort = gs_data-lgort.
+          wa_error-matnr = gs_data-matnr.
+          wa_error-msg   = 'Data Already Exist'.
+          APPEND wa_error TO it_error.
+          CLEAR: wa_error.
+
+        ENDIF.
+
+      ELSEIF wa_zya_mmt_sloc_blk IS INITIAL.                       "Uploading new data
+
+        gs_data-created_by      = sy-uname.
+        gs_data-created_date    = sy-datum.
+        gs_data-created_time    = sy-uzeit.
+        gs_data-changed_by      = sy-uname.
+        gs_data-changed_date    = sy-datum.
+        gs_data-changed_time    = sy-uzeit.
+
+        MOVE-CORRESPONDING gs_data TO zya_mmt_sloc_blk.
+        MODIFY zya_mmt_sloc_blk.
+        COMMIT WORK.
+
+        IF sy-subrc = 0.
+          wa_error-werks = gs_data-werks.
+          wa_error-lgort = gs_data-lgort.
+          wa_error-matnr = gs_data-matnr.
+          wa_error-msg   = 'Data Uploaded Successfully'.
+          APPEND wa_error TO it_error.
+          CLEAR: wa_error.
+        ENDIF.
+
+
+      ENDIF.
+
+    ELSE.
+      wa_error-werks = gs_data-werks.
+      wa_error-lgort = gs_data-lgort.
+      wa_error-matnr = gs_data-matnr.
+      wa_error-msg   = 'Block Status should not be blank'.
+      APPEND wa_error TO it_error.
+      CLEAR: wa_error.
+    ENDIF.
+
+
+    CLEAR: gs_data, wa_zya_mmt_sloc_blk.
+  ENDLOOP.
+
+  IF it_error[] IS NOT INITIAL.
+    PERFORM display.
+  ENDIF.
+
+ENDFORM.
+
+FORM display .
+
+  PERFORM build_fcat_row USING :
+
+ 'IT_ERROR'      'WERKS'              'Plant'                          ,
+ 'IT_ERROR'      'LGORT'              'Storage Location'               ,
+ 'IT_ERROR'      'MATNR'              'Material Number'                ,
+*   'IT_ERROR'      'MSGTYP'             'Message Type'                   ,
+ 'IT_ERROR'      'MSG'              'Success\Error Message'          .
+
+
+  wa_layout-colwidth_optimize = 'X'.
+
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+*     i_callback_pf_status_set = 'SET_PF_STATUS'
+      is_layout          = wa_layout
+      it_fieldcat        = it_fieldcat
+    TABLES
+      t_outtab           = it_error
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+
+ENDFORM.
+
+
+
+FORM build_fcat_row  USING  p_tabname
+                     p_fieldname
+                     p_seltext
+                     .
+
+
+  wa_fieldcat-tabname   = p_tabname.
+  wa_fieldcat-fieldname = p_fieldname.
+  wa_fieldcat-seltext_l = p_seltext.
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR: wa_fieldcat.
+
+ENDFORM.
+
+FORM getdata.
+  SELECT *
+    FROM zya_mmt_sloc_blk
+    INTO TABLE it_final
+    WHERE matnr IN s_matnr
+      AND   werks IN s_werks
+      AND   lgort IN s_lgort.
+
+ENDFORM.
+
+
+FORM display_data.
+
+  PERFORM build_fcat_row1 USING :
+     'IT_FINAL'  'WERKS'             'Plant '                '10' ,
+     'IT_FINAL'  'LGORT'             'Storage location '     '10' ,
+     'IT_FINAL'  'MATNR'             'Material Number '      '25' ,
+     'IT_FINAL'  'SLOC_BLOCK'        'Block Status '         '15' ,
+     'IT_FINAL'  'CREATED_BY'        'Created By '           '20' ,
+     'IT_FINAL'  'CREATED_DATE'      'Creation Date '        '12' ,
+     'IT_FINAL'  'CREATED_TIME'      'Creation Time '        '12' ,
+     'IT_FINAL'  'CHANGED_BY'        'Changed By '           '20' ,
+     'IT_FINAL'  'CHANGED_DATE'      'Changed On '           '12' ,
+     'IT_FINAL'  'CHANGED_TIME'      'Change Time '          '12' .
+
+
+  wa_layout2-colwidth_optimize = 'X'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+*     i_callback_pf_status_set = 'SET_PF_STATUS'
+      is_layout          = wa_layout2
+      it_fieldcat        = it_fieldcat2
+    TABLES
+      t_outtab           = it_final
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+
+
+ENDFORM.
+
+
+FORM build_fcat_row1  USING  p_tabname2
+                   p_fieldname2
+                   p_seltext2
+                   p_length
+                   .
+
+
+  wa_fieldcat2-tabname   = p_tabname2.
+  wa_fieldcat2-fieldname = p_fieldname2.
+  wa_fieldcat2-seltext_l = p_seltext2.
+  wa_fieldcat2-outputlen = p_length.
+
+  APPEND wa_fieldcat2 TO it_fieldcat2.
+  CLEAR: wa_fieldcat2.
+
+ENDFORM.
