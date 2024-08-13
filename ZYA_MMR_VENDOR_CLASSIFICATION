@@ -1,0 +1,246 @@
+INCLUDE zya_mmr_vendor_class_t01.
+INCLUDE zya_mmr_vendor_class_s01.
+INCLUDE zya_mmr_vendor_class_f01.
+
+START-OF-SELECTION.
+
+  PERFORM getdata.
+  IF it_final IS NOT INITIAL.
+    PERFORM display_data.
+  ELSE.
+    MESSAGE ' Data Not Found ' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_VENDOR_CLASS_T01
+*&---------------------------------------------------------------------*
+
+TABLES: lfa1.
+
+TYPES: BEGIN OF ty_final,
+         lifnr                     TYPE lfa1-lifnr,
+         name1                     TYPE char80,
+         zyoh_irs_1099_code        TYPE char15,
+         zyoh_federal_id_no        TYPE char15,
+         zyoh_oce_fri_vendor       TYPE char6,
+         zyoh_confi_bank_info      TYPE char15,
+         zyoh_confi_with           TYPE char22,
+         zyoh_confirmed_by         TYPE char22,
+         zyoh_global_dim_1_code    TYPE char15,
+         zyoh_yohta_cantact_vendor TYPE char15,
+
+       END OF ty_final.
+
+DATA: it_final           TYPE TABLE OF ty_final,
+      wa_final           TYPE ty_final,
+      it_fieldcat        TYPE slis_t_fieldcat_alv,
+      wa_fieldcat        TYPE slis_fieldcat_alv,
+      wa_layout          TYPE slis_layout_alv,
+
+      it_allocvalueschar TYPE bapi1003_alloc_values_char OCCURS 0 WITH HEADER LINE,
+      it_allocvaluescurr TYPE bapi1003_alloc_values_curr OCCURS 0 WITH HEADER LINE,
+      it_allocvaluesnum  TYPE bapi1003_alloc_values_num  OCCURS 0 WITH HEADER LINE,
+      it_return          TYPE  bapiret2 OCCURS 0 WITH HEADER LINE,
+      gv_vendor          TYPE bapi1003_key-object.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_VENDOR_CLASS_S01
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+  SELECT-OPTIONS: s_lifnr   FOR lfa1-lifnr.
+*                  s_name1   FOR lfa1-name1.
+
+SELECTION-SCREEN: END OF BLOCK b1.
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZYA_MMR_VENDOR_CLASS_F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form getdata
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM getdata .
+
+  SELECT f~lifnr, f~name1, f~name2, b~bukrs
+    FROM lfa1 AS f
+    INNER JOIN lfb1 AS b
+    ON f~lifnr = b~lifnr
+    INTO TABLE @DATA(it_lfa1)
+    WHERE f~lifnr  IN @s_lifnr
+    AND b~bukrs = '3000'.
+
+  IF it_lfa1 IS NOT INITIAL.
+    SORT it_lfa1 ASCENDING BY lifnr.
+
+    LOOP AT it_lfa1 INTO DATA(wa_lfa2).
+
+      SELECT SINGLE *
+         FROM ausp
+         INTO @DATA(wa_ausp)
+         WHERE objek = @wa_lfa2-lifnr.
+
+      IF wa_ausp IS INITIAL AND sy-subrc NE 0.
+        DELETE it_lfa1 WHERE lifnr = wa_lfa2-lifnr.
+      ENDIF.
+      CLEAR: wa_lfa2, wa_ausp.
+    ENDLOOP.
+
+  ENDIF.
+
+  LOOP AT it_lfa1 INTO DATA(lwa_lfa1).
+
+    wa_final-lifnr    = lwa_lfa1-lifnr.
+    CONCATENATE lwa_lfa1-name1 lwa_lfa1-name2 INTO wa_final-name1  .
+
+
+    IF wa_final-lifnr IS NOT INITIAL.
+      gv_vendor    = wa_final-lifnr.
+
+      CALL FUNCTION 'BAPI_OBJCL_GETDETAIL'
+        EXPORTING
+          objectkey       = gv_vendor
+          objecttable     = 'LFA1'
+          classnum        = 'YOHTA_VEN_CLASS'
+          classtype       = '010'
+          keydate         = sy-datum
+          language        = sy-langu
+        TABLES
+          allocvaluesnum  = it_allocvaluesnum
+          allocvalueschar = it_allocvalueschar
+          allocvaluescurr = it_allocvaluescurr
+          return          = it_return.
+
+      IF sy-subrc = 0.
+        IF it_allocvalueschar IS NOT INITIAL.
+          LOOP AT it_allocvalueschar.
+            IF it_allocvalueschar-charact  = 'ZYOH_IRS_1099_CODE'        .
+              wa_final-zyoh_irs_1099_code = it_allocvalueschar-value_char_long.
+            ENDIF.
+
+            IF it_allocvalueschar-charact  = 'ZYOH_FEDERAL_ID_NO'        .
+              wa_final-zyoh_federal_id_no  = it_allocvalueschar-value_char_long.
+            ENDIF.
+
+            IF it_allocvalueschar-charact  = 'ZYOH_OCE_FRI_VENDOR'       .
+              wa_final-zyoh_oce_fri_vendor = it_allocvalueschar-value_char_long.
+            ENDIF.
+
+            IF it_allocvalueschar-charact  = 'ZYOH_CONFI_BANK_INFO'      .
+              wa_final-zyoh_confi_bank_info = it_allocvalueschar-value_char_long.
+            ENDIF.
+
+            IF it_allocvalueschar-charact  = 'ZYOH_CONFI_WITH'           .
+              wa_final-zyoh_confi_with = it_allocvalueschar-value_char_long.
+            ENDIF.
+
+            IF it_allocvalueschar-charact  = 'ZYOH_CONFIRMED_BY'         .
+              wa_final-zyoh_confirmed_by  = it_allocvalueschar-value_char_long.
+            ENDIF.
+
+            IF it_allocvalueschar-charact  = 'ZYOH_GLOBAL_DIM_1_CODE'    .
+              wa_final-zyoh_global_dim_1_code = it_allocvalueschar-value_char_long.
+            ENDIF.
+
+            IF it_allocvalueschar-charact  = 'ZYOH_YOHTA_CANTACT_VENDOR' .
+              wa_final-zyoh_yohta_cantact_vendor  = it_allocvalueschar-value_char_long.
+            ENDIF.
+
+
+          ENDLOOP.
+
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+      EXPORTING
+        input  = wa_final-lifnr
+      IMPORTING
+        output = wa_final-lifnr.
+
+
+    APPEND wa_final TO it_final.
+    CLEAR: lwa_lfa1, wa_final.
+    REFRESH: it_return, it_allocvaluescurr, it_allocvalueschar, it_allocvaluesnum.
+  ENDLOOP.
+
+
+ENDFORM.
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form display_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM display_data .
+
+  PERFORM build_fieldcat_row USING:
+
+
+  'IT_FINAL'   'LIFNR'                        'Vendor No '                            '35'  ,
+  'IT_FINAL'   'NAME1'                        'Vendor Name '                          '80'  ,
+  'IT_FINAL'   'ZYOH_IRS_1099_CODE'           'IRS 1099 Code Charateristic '          '15'  ,
+  'IT_FINAL'   'ZYOH_FEDERAL_ID_NO'           'Federal ID No. Charateristic '         '15'  ,
+  'IT_FINAL'   'ZYOH_OCE_FRI_VENDOR'          'Ocean Freight Vendor Charater '        '6'   ,
+  'IT_FINAL'   'ZYOH_CONFI_BANK_INFO'         'Confirmed Bank Info. Charac. '         '15'  ,
+  'IT_FINAL'   'ZYOH_CONFI_WITH'              'Confirmed With Charateristic '         '22'  ,
+  'IT_FINAL'   'ZYOH_CONFIRMED_BY'            'Confirmed By Charateristic '           '22'  ,
+  'IT_FINAL'   'ZYOH_GLOBAL_DIM_1_CODE'       'Global Dimension 1 Code Char. '        '15'  ,
+  'IT_FINAL'   'ZYOH_YOHTA_CANTACT_VENDOR'    'Yohta - Cantact to Vendor Char '       '15'  .
+
+
+  wa_layout-colwidth_optimize     =  'X'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'PF_STATUS_SET'
+      is_layout                = wa_layout
+      it_fieldcat              = it_fieldcat
+    TABLES
+      t_outtab                 = it_final
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+ENDFORM.
+
+
+
+FORM build_fieldcat_row  USING  p_tabname
+                     p_fieldname
+                     p_seltext
+                     p_length.
+
+  wa_fieldcat-tabname   = p_tabname.
+  wa_fieldcat-fieldname = p_fieldname.
+  wa_fieldcat-seltext_l = p_seltext.
+  wa_fieldcat-outputlen = p_length.
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------
+*& Form STATUS
+*&---------------------------------------------------------------------
+FORM pf_status_set USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZGUI'.
+ENDFORM.
